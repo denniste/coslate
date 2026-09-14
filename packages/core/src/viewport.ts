@@ -11,6 +11,9 @@ import type { Bounds, Point, Size, Viewport } from './types.js';
  * viewport's top-left corner, and `scale` is screen pixels per world unit.
  */
 
+/** The camera a fresh editor starts from: origin, 100%. */
+export const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 };
+
 export const MIN_SCALE = 0.05;
 export const MAX_SCALE = 8;
 

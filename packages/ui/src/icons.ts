@@ -1,10 +1,11 @@
 /**
- * Inline SVG icons for the demo chrome.
+ * Inline SVG icons for the chrome. (Moved verbatim out of the demo: icons are
+ * chrome, not application code.)
  *
  * Hand-written 24×24 stroke glyphs drawn in `currentColor`, so a button's icon
  * inherits hover / active / disabled colour from plain CSS. No icon font, no
  * sprite sheet, no dependency: the whole set is a few hundred bytes of source
- * and it tree-shakes with the rest of the demo.
+ * and it tree-shakes with the rest of the package.
  *
  * Parsing through `DOMParser` (rather than assigning `innerHTML` to an <svg>)
  * keeps the markup creation on one well-defined path and gives a real

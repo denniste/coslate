@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/konva" },
+    { "path": "packages/ui" },
     { "path": "apps/demo" },
     { "path": "tsconfig.tests.json" }
   ]

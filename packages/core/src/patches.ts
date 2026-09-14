@@ -9,7 +9,6 @@ import {
   type ObjectType,
   type Scene,
   type SceneObject,
-  type Viewport,
 } from './types.js';
 
 /**
@@ -159,22 +158,13 @@ function renumberZOps(orderWithout: readonly Id[], id: Id, index: number): JSONP
   }));
 }
 
-/** Viewport changes are part of the document, so pan/zoom undo is free. */
-export function setViewportOps(viewport: Viewport): JSONPatchOp[] {
-  return [
-    { op: 'replace', path: '/viewport/x', value: viewport.x },
-    { op: 'replace', path: '/viewport/y', value: viewport.y },
-    { op: 'replace', path: '/viewport/scale', value: viewport.scale },
-  ];
-}
-
 /** Build a scene literal from objects — handy in tests and importers. */
-export function sceneFromObjects(objects: readonly SceneObject[], viewport: Viewport = { x: 0, y: 0, scale: 1 }): Scene {
+export function sceneFromObjects(objects: readonly SceneObject[]): Scene {
   const map: Record<Id, SceneObject> = {};
   const order: Id[] = [];
   objects.forEach((object, index) => {
     map[object.id] = { ...object, z: index };
     order.push(object.id);
   });
-  return { format: SCENE_FORMAT, version: SCENE_VERSION, viewport, objects: map, order };
+  return { format: SCENE_FORMAT, version: SCENE_VERSION, objects: map, order };
 }

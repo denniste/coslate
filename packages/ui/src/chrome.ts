@@ -1,29 +1,34 @@
-import { STROKE_PALETTE, STROKE_WIDTHS, TOOL_NAMES, type ToolName, type WhiteboardEditor } from '@coslate/konva';
-import type { MessageParams } from '@coslate/core';
+import { STROKE_PALETTE, STROKE_WIDTHS, TOOL_NAMES, type ToolName } from '@coslate/konva';
 import { icon, type IconName } from './icons.js';
-import type { DemoI18n } from './i18n/index.js';
-import type { MessageKey } from './i18n/catalog-en.js';
+import { ensureChromeStyles } from './styles.js';
+import { applyTheme, clearTheme } from './theme.js';
 import { createTooltipLayer } from './tooltip.js';
+import type { Chrome, ChromeMessageKey, ChromeOptions, ChromeParams } from './types.js';
 
 /**
- * The demo chrome: an icon toolbar with hover hints, and a status bar.
+ * The embeddable chrome: an icon toolbar with hover hints, and a status bar.
  *
  * tldraw-shaped on purpose — grouped, icon-only controls that read at a glance,
  * with the text hint on hover instead of a permanent label. The hint carries the
  * keyboard shortcut too, which is the only place the two bindings are stated
  * together.
  *
- * Everything visible here goes through `i18n.t()`. Nothing is pre-translated into
- * component state — the status line keeps a *key plus params* — so switching
- * language re-renders the whole chrome, including the last message it showed,
- * without rebuilding a single control.
+ * Everything visible here goes through the host's `i18n.t()`. Nothing is
+ * pre-translated into component state — the status line keeps a *key plus
+ * params* — so switching language re-renders the whole chrome, including the
+ * last message it showed, without rebuilding a single control.
  *
- * Deliberately plain DOM. The point of the demo is to prove the runtime works in
- * a browser, not to be a UI framework — every control here is a thin call into
+ * The package ships no copy and no layout assumption: the host supplies the two
+ * mount points, the chrome fills them, and the stylesheet is injected once
+ * (`ensureChromeStyles`). Every colour and radius is a `--coslate-*` custom
+ * property on the package root (`.coslate-ui`).
+ *
+ * Deliberately plain DOM. The point is to prove the runtime works in a browser,
+ * not to be a UI framework — every control here is a thin call into
  * `WhiteboardEditor`, which is the API a real product would also use.
  */
 
-const TOOL_META: Record<ToolName, { key: MessageKey; hint: string; icon: IconName }> = {
+const TOOL_META: Record<ToolName, { key: ChromeMessageKey; hint: string; icon: IconName }> = {
   select: { key: 'tool.select.label', hint: 'V', icon: 'select' },
   pen: { key: 'tool.pen.label', hint: 'P', icon: 'pen' },
   eraser: { key: 'tool.eraser.label', hint: 'E', icon: 'eraser' },
@@ -34,24 +39,11 @@ const TOOL_META: Record<ToolName, { key: MessageKey; hint: string; icon: IconNam
   text: { key: 'tool.text.label', hint: 'T', icon: 'text' },
 };
 
-const FILL_OPTIONS: { value: string | null; key: MessageKey }[] = [
+const FILL_OPTIONS: { value: string | null; key: ChromeMessageKey }[] = [
   { value: null, key: 'style.fill.none' },
   { value: '#ffffff', key: 'style.fill.white' },
   { value: '#1c2129', key: 'style.fill.panel' },
 ];
-
-export interface Chrome {
-  sync(): void;
-  /** Set the status message by *key*, so it re-renders on a locale change. */
-  setStatus(key: MessageKey, params?: MessageParams): void;
-}
-
-export interface ChromeOptions {
-  toolbar: HTMLElement;
-  statusbar: HTMLElement;
-  editor: WhiteboardEditor;
-  i18n: DemoI18n;
-}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -67,6 +59,15 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/**
+ * Counters are a label plus a number in the host locale, so they use `Intl`
+ * directly rather than borrowing a formatter method from the translator: the
+ * chrome's `ChromeI18n` contract exposes `locale`, which is all `Intl` needs.
+ */
+function formatNumber(locale: string, value: number, options?: Intl.NumberFormatOptions): string {
+  return new Intl.NumberFormat(locale, options).format(value);
+}
+
 interface IconButtonOptions {
   testId: string;
   icon: IconName;
@@ -78,10 +79,30 @@ interface IconButtonOptions {
   onClick: () => void;
 }
 
-export function createChrome(options: ChromeOptions): Chrome {
-  const { toolbar, statusbar, editor, i18n } = options;
-  const t = i18n.t;
-  const tooltip = createTooltipLayer();
+export function createChrome<K extends string>(options: ChromeOptions<K>): Chrome<K> {
+  const { toolbar, statusbar, editor, i18n, theme, statusHint } = options;
+
+  // The stylesheet ships with the package and is injected once per document.
+  ensureChromeStyles(toolbar.ownerDocument);
+
+  // Two mount points, one chrome: both wear the package root class so the
+  // scoped stylesheet (and the z-index band) reaches them and nothing else.
+  toolbar.classList.add('coslate-ui', 'coslate-toolbar');
+  statusbar.classList.add('coslate-ui', 'coslate-statusbar');
+  applyTheme([toolbar, statusbar], theme);
+
+  /**
+   * The chrome's own keys, resolved through the host translator.
+   *
+   * `K` is the host's full key union (the package cannot name it), and the
+   * chrome only ever asks for keys in {@link ChromeMessageKey} — which the
+   * `ChromeI18n` contract requires a host catalog to cover — so the assertion
+   * is a statement of that contract rather than a hole in the types.
+   */
+  const t = (key: ChromeMessageKey, params?: ChromeParams): string => i18n.t(key as K, params);
+  const tooltip = createTooltipLayer(toolbar.ownerDocument.body);
+  applyTheme([tooltip.node], theme);
+
   const toolButtons = new Map<ToolName, HTMLButtonElement>();
   const strokeButtons = new Map<string, HTMLButtonElement>();
   const fillButtons = new Map<string, HTMLButtonElement>();
@@ -96,7 +117,7 @@ export function createChrome(options: ChromeOptions): Chrome {
     return node;
   }
 
-  function group(labelKey: MessageKey, ...children: (Node | string)[]): HTMLElement {
+  function group(labelKey: ChromeMessageKey, ...children: (Node | string)[]): HTMLElement {
     const node = el('div', { class: 'toolbar-group', role: 'group' });
     node.dataset.labelKey = labelKey;
     node.setAttribute('aria-label', t(labelKey));
@@ -207,9 +228,9 @@ export function createChrome(options: ChromeOptions): Chrome {
     void file.text().then((text) => {
       try {
         editor.loadJSON(text);
-        setStatus('status.loaded', { file: file.name });
+        applyStatus('status.loaded', { file: file.name });
       } catch (error) {
-        setStatus('status.loadFailed', { error: error instanceof Error ? error.message : String(error) });
+        applyStatus('status.loadFailed', { error: error instanceof Error ? error.message : String(error) });
       }
       fileInput.value = '';
     });
@@ -257,7 +278,7 @@ export function createChrome(options: ChromeOptions): Chrome {
     option.textContent = language.label;
     languageSelect.append(option);
   }
-  languageSelect.value = i18n.i18n.locale;
+  languageSelect.value = i18n.locale;
   languageSelect.addEventListener('change', () => {
     i18n.setLocale(languageSelect.value);
   });
@@ -319,9 +340,12 @@ export function createChrome(options: ChromeOptions): Chrome {
     style.append(node);
   }
 
+  // The toolbar fills its container; the inner wrapper carries the padding so
+  // the container-query width is the true available width (see styles.ts).
   const main = el('div', { class: 'toolbar-main' });
   main.append(tools, history, zoom, objectActions, io, language);
-  toolbar.append(main, style);
+  const toolbarInner = el('div', { class: 'coslate-toolbar-inner' }, [main, style]);
+  toolbar.append(toolbarInner);
 
   // --- status bar ----------------------------------------------------------
   interface StatusItem {
@@ -330,11 +354,13 @@ export function createChrome(options: ChromeOptions): Chrome {
     value: HTMLElement;
   }
 
+  const statusbarInner = el('div', { class: 'coslate-statusbar-inner' });
+
   function statusItem(): StatusItem {
     const label = el('span', { class: 'status-label' });
     const value = el('strong');
     const root = el('span', {}, [label, ' ', value]);
-    statusbar.append(root);
+    statusbarInner.append(root);
     return { root, label, value };
   }
 
@@ -344,15 +370,18 @@ export function createChrome(options: ChromeOptions): Chrome {
   const zoomStatus = statusItem();
   const message = el('span', { class: 'status-message' });
   const hint = el('span', { class: 'status-hint' });
-  // A code snippet, not prose: deliberately outside the catalog.
-  hint.textContent = 'window.__scene = { store, getScene, getSelection, setTool, … } — debug/test hook';
-  statusbar.append(message, hint);
+  // A code snippet, not prose: deliberately outside the catalog, so the host
+  // passes it in (or not at all) rather than the package shipping English.
+  if (statusHint !== undefined) hint.textContent = statusHint;
+  statusbarInner.append(message, hint);
+  statusbar.append(statusbarInner);
 
-  let status: { key: MessageKey; params?: MessageParams } = { key: 'status.newScene' };
+  let status: { key: K | ChromeMessageKey; params?: ChromeParams } = { key: 'status.newScene' };
 
-  function setStatus(key: MessageKey, params?: MessageParams): void {
+  /** Shared by the host-facing `setStatus` and the chrome's own messages. */
+  function applyStatus(key: K | ChromeMessageKey, params?: ChromeParams): void {
     status = { key, params };
-    message.textContent = t(key, params);
+    message.textContent = i18n.t(key as K, params);
   }
 
   function setPressed<T>(map: Map<T, HTMLButtonElement>, value: T): void {
@@ -361,8 +390,7 @@ export function createChrome(options: ChromeOptions): Chrome {
 
   /** Re-read every translated string. Cheap: text nodes only, no rebuilds. */
   function render(): void {
-    const scene = editor.getScene();
-    const selection = editor.getSelection();
+    const summary = editor.getSummary();
     const tool = editor.getToolName();
 
     for (const [name, node] of toolButtons) node.setAttribute('aria-pressed', String(name === tool));
@@ -370,49 +398,94 @@ export function createChrome(options: ChromeOptions): Chrome {
     setPressed(fillButtons, String(editor.style.fill));
     setPressed(widthButtons, editor.style.strokeWidth);
 
-    undoButton.disabled = !editor.canUndo();
-    redoButton.disabled = !editor.canRedo();
-    const hasSelection = selection.length > 0;
+    undoButton.disabled = !summary.canUndo;
+    redoButton.disabled = !summary.canRedo;
+    const hasSelection = summary.selection > 0;
     for (const id of ['delete', 'duplicate', 'front', 'back'] as const) {
       const node = toolbar.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
       if (node) node.disabled = !hasSelection;
     }
 
     for (const node of toolbar.querySelectorAll<HTMLElement>('[data-label-key]')) {
-      node.setAttribute('aria-label', t(node.dataset.labelKey as MessageKey));
+      node.setAttribute('aria-label', t(node.dataset.labelKey as ChromeMessageKey));
     }
-    languageSelect.value = i18n.i18n.locale;
+    languageSelect.value = i18n.locale;
 
     toolStatus.label.textContent = t('status.tool');
     toolStatus.value.textContent = t(TOOL_META[tool].key);
     selectionStatus.label.textContent = t('status.selection');
-    selectionStatus.value.textContent = i18n.i18n.formatNumber(selection.length);
+    selectionStatus.value.textContent = formatNumber(i18n.locale, summary.selection);
     // The counters are a label plus a formatted number, not a sentence: splitting
     // a plural message around a bold value is how translations break.
     objectStatus.label.textContent = t('status.objects');
-    objectStatus.value.textContent = i18n.i18n.formatNumber(scene.order.length);
+    objectStatus.value.textContent = formatNumber(i18n.locale, summary.objects);
     zoomStatus.label.textContent = t('status.zoom');
-    const percent = i18n.i18n.formatNumber(scene.viewport.scale, { style: 'percent' });
+    const percent = formatNumber(i18n.locale, summary.zoom, { style: 'percent' });
     zoomStatus.value.textContent = percent;
     zoomLabel.textContent = percent;
 
     // The message is state, so it survives the switch in the new language.
-    message.textContent = t(status.key, status.params);
+    message.textContent = i18n.t(status.key as K, status.params);
   }
 
   function sync(): void {
     render();
   }
 
-  editor.on('tool', sync);
-  editor.on('selection', sync);
-  editor.on('style', sync);
-  editor.on('change', sync);
-  i18n.i18n.subscribe(() => {
-    tooltip.refresh();
-    render();
-  });
+  const unsubscribers: (() => void)[] = [
+    editor.on('tool', sync),
+    editor.on('selection', sync),
+    editor.on('style', sync),
+    editor.on('change', sync),
+    i18n.subscribe(() => {
+      tooltip.refresh();
+      render();
+    }),
+  ];
+
+  // --- visibility (the mini state) -----------------------------------------
+  let chromeVisible = options.chrome !== 'none';
+
+  /**
+   * Hide or show *all* chrome. The mount points collapse, so the host's layout
+   * gives the canvas back everything the toolbar and status bar occupied; focus
+   * is released from any control that just vanished, so Tab cannot land in a
+   * hidden widget.
+   */
+  function setChromeVisible(visible: boolean): void {
+    chromeVisible = visible;
+    toolbar.hidden = !visible;
+    statusbar.hidden = !visible;
+    if (!visible) {
+      tooltip.hide();
+      const doc = toolbar.ownerDocument;
+      const active = doc.activeElement;
+      if (active instanceof HTMLElement && (toolbar.contains(active) || statusbar.contains(active))) active.blur();
+    }
+  }
+
+  if (!chromeVisible) setChromeVisible(false);
+
+  function destroy(): void {
+    for (const unsubscribe of unsubscribers) unsubscribe();
+    tooltip.destroy();
+    toolbarInner.remove();
+    statusbarInner.remove();
+    toolbar.classList.remove('coslate-ui', 'coslate-toolbar');
+    statusbar.classList.remove('coslate-ui', 'coslate-statusbar');
+    toolbar.hidden = false;
+    statusbar.hidden = false;
+    chromeVisible = true;
+    clearTheme([toolbar, statusbar, tooltip.node], theme);
+  }
+
   render();
 
-  return { sync, setStatus };
+  return {
+    sync,
+    setStatus: applyStatus,
+    setChromeVisible,
+    isChromeVisible: () => chromeVisible,
+    destroy,
+  };
 }

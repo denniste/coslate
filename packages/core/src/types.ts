@@ -175,11 +175,18 @@ export function isObjectOfType<T extends ObjectType>(
  * ARCHITECTURE.md. `objects` is a lookup table keyed by id and `order` is the
  * authoritative paint order, which keeps reordering O(n) instead of a `z`
  * rewrite across the whole document.
+ *
+ * **The camera is not here.** It used to be `Scene.viewport`, which meant a
+ * shared document carried someone's view of it: broadcast a scene and every
+ * participant got dragged to the publisher's pan position, and a saved baseline
+ * recorded whose camera happened to be current. The camera is per-user view
+ * state, so it lives in the editor (and in whatever a host persists for its own
+ * user) — never in the document. Version 2 dropped the field; see the migration
+ * in `serialize.ts`.
  */
 export interface Scene {
   format: 'coslate/scene';
-  version: 1;
-  viewport: Viewport;
+  version: 2;
   objects: Record<Id, SceneObject>;
   order: Id[];
   /** Document-level free-form metadata, same rationale as `SceneObject.meta`. */
@@ -187,7 +194,12 @@ export interface Scene {
 }
 
 export const SCENE_FORMAT = 'coslate/scene' as const;
-export const SCENE_VERSION = 1 as const;
+export const SCENE_VERSION = 2 as const;
+
+/** A blank document. */
+export function createEmptyScene(): Scene {
+  return { format: SCENE_FORMAT, version: SCENE_VERSION, objects: {}, order: [] };
+}
 
 /** Default geometry/factory for a new object of a given type. */
 export function defaultData<T extends ObjectType>(type: T): ObjectDataMap[T];

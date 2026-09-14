@@ -36,7 +36,10 @@ export { TextOverlay } from './text-overlay.js';
 export type { TextOverlayOptions } from './text-overlay.js';
 
 export { WhiteboardEditor } from './editor.js';
-export type { EditorEventName, EditorOptions } from './editor.js';
+export type { EditorEventName, EditorOptions, EditorSummary } from './editor.js';
+
+export { createSceneViewer, renderSceneOnce } from './viewer.js';
+export type { SceneViewer, SceneViewerOptions } from './viewer.js';
 
 export { TOOL_NAMES } from './tools/types.js';
 export type { PointerInfo, TextEditorRequest, Tool, ToolHost, ToolName } from './tools/types.js';

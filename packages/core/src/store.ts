@@ -2,8 +2,9 @@ import { applyPatch, invertPatch, type JSONPatchOp } from './jsonpatch.js';
 import { createCommand, isCommand, type Command, type CommandSource } from './command.js';
 import { History, redoEntry, undoEntry, DEFAULT_HISTORY_LIMIT, type HistoryEntry } from './history.js';
 import { newId } from './ids.js';
+import { deltaToCommands, normalizeDelta, type SceneDelta } from './records.js';
 import type { Id, Scene, SceneObject } from './types.js';
-import { SCENE_FORMAT, SCENE_VERSION } from './types.js';
+import { createEmptyScene } from './types.js';
 
 /**
  * The store: a tiny, pure state container around a {@link Scene}.
@@ -77,8 +78,21 @@ export interface SceneStore {
   dispatch(command: Command): Command;
   /** Build a command (computing its inverse) and dispatch it in one go. */
   commit(input: CommitInput): Command;
-  /** Apply commands from an untrusted origin: forward only, never recorded in undo. */
+  /**
+   * Apply commands from an untrusted origin.
+   *
+   * **All or nothing**: structurally unusable entries are dropped, but if any
+   * surviving command fails to apply, the whole batch is refused and the document
+   * is left untouched. Half a remote batch is how two peers silently diverge.
+   * Never recorded in undo, and clears the redo branch.
+   */
   applyRemote(commands: readonly Command[]): void;
+  /**
+   * Apply an object-state delta (see `records.ts`). Idempotent: replaying the same
+   * delta is a no-op, which is what makes a reconnecting data channel safe.
+   * Returns whether anything changed.
+   */
+  applyDelta(delta: SceneDelta): boolean;
   subscribe(listener: StoreListener): () => void;
   transaction<T>(fn: (scene: SceneHandle, tx: TransactionContext) => T, options?: TransactionOptions): T;
   undo(): boolean;
@@ -97,16 +111,8 @@ interface Frame {
   startIndex: number;
 }
 
-/** A blank document. */
-export function createEmptyScene(viewport: Scene['viewport'] = { x: 0, y: 0, scale: 1 }): Scene {
-  return {
-    format: SCENE_FORMAT,
-    version: SCENE_VERSION,
-    viewport: { ...viewport },
-    objects: {},
-    order: [],
-  };
-}
+/** Re-exported from `types.ts`, where the scene type lives. */
+export { createEmptyScene } from './types.js';
 
 export function createStore(options: StoreOptions = {}): SceneStore {
   let scene: Scene = options.scene ?? createEmptyScene();
@@ -180,23 +186,42 @@ export function createStore(options: StoreOptions = {}): SceneStore {
     },
 
     applyRemote(commands: readonly Command[]): void {
-      const applied: Command[] = [];
-      for (const candidate of commands) {
-        if (!isCommand(candidate)) {
-          reportError(new TypeError('CoSlate: applyRemote received a malformed command'), 'applyRemote');
-          continue;
-        }
-        try {
-          applied.push(applyOne(candidate));
-        } catch (error) {
-          reportError(error, `applyRemote:${candidate.type}`);
-        }
+      const accepted = commands.filter((candidate) => {
+        if (isCommand(candidate)) return true;
+        reportError(new TypeError('CoSlate: applyRemote received a malformed command'), 'applyRemote');
+        return false;
+      });
+      if (accepted.length === 0) return;
+
+      // Atomic: build the whole batch against a working copy first. Immutability
+      // means a mid-batch failure simply never reaches `scene`.
+      const before = scene;
+      let applied: Command[];
+      try {
+        let working = before;
+        for (const command of accepted) working = applyPatch(working, command.patch);
+        applied = accepted.map((command) => applyOne(command));
+      } catch (error) {
+        // `applyOne` assigns as it goes, so roll back to what we started with:
+        // a refused batch must leave the document exactly as it was.
+        scene = before;
+        reportError(error, 'applyRemote (batch refused)');
+        notify([], 'remote', 'remote (batch refused)');
+        return;
       }
-      if (applied.length === 0) return;
       // A remote change forks the timeline; keeping a stale redo branch would
       // let redo resurrect operations the remote peer already superseded.
       history.clearRedo();
       notify(applied, 'remote', 'remote');
+    },
+
+    applyDelta(delta: SceneDelta): boolean {
+      const normalized = normalizeDelta(delta);
+      if (!normalized) return false;
+      const command = deltaToCommands(scene, normalized, { source: 'api', label: 'remote' });
+      if (!command) return false;
+      store.applyRemote([command]);
+      return true;
     },
 
     subscribe(listener: StoreListener): () => void {

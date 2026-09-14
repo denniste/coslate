@@ -1,8 +1,10 @@
 import Konva from 'konva';
 import {
   addObjectOps,
+  clampScale,
   createEmptyScene,
   createStore,
+  DEFAULT_VIEWPORT,
   deserialize,
   isObjectOfType,
   makeObject,
@@ -12,7 +14,6 @@ import {
   reorderObjectOps,
   screenToWorld,
   serialize,
-  setViewportOps,
   updateObjectDataOps,
   updateObjectOps,
   zoomAt,
@@ -45,7 +46,25 @@ import type { PointerInfo, TextEditorRequest, Tool, ToolHost, ToolName } from '.
  * is what makes "one gesture = one undo step" enforceable rather than aspirational.
  */
 
-export type EditorEventName = 'selection' | 'tool' | 'style' | 'change' | 'history';
+export type EditorEventName = 'selection' | 'tool' | 'style' | 'change' | 'history' | 'viewport' | 'readonly';
+
+/** What a host status bar needs, without reaching into the store. */
+export interface EditorSummary {
+  objects: number;
+  /**
+   * Bytes of the **compact** `serialize(scene)` — the number a server would
+   * actually store. Note that `toJSON()` is pretty-printed for humans, so the two
+   * differ; this is the one to show in a status bar.
+   */
+  bytes: number;
+  selection: number;
+  zoom: number;
+  readOnly: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Whether there is anything worth saving at all (R5: an empty board is not). */
+  isEmpty: boolean;
+}
 
 export interface EditorOptions {
   /** Positioning context for the canvas and the text overlay. Must be `position: relative`. */
@@ -70,6 +89,18 @@ export interface EditorOptions {
    * localization is expected to supply one.
    */
   textAriaLabel?: string | (() => string);
+  /**
+   * Starting camera. The camera is per-user view state and never travels with the
+   * document, so a host that wants "reopen where I left off" persists this itself.
+   */
+  viewport?: Viewport;
+  /**
+   * Mount read-only. Products usually mount read-only and unlock later — see
+   * {@link WhiteboardEditor.setReadOnly}.
+   */
+  readOnly?: boolean;
+  /** Called after a read-only flip, once the editor has settled into it. */
+  onReadOnlyChange?: (readOnly: boolean) => void;
 }
 
 /** Coerce `string | () => string | undefined` into a lazy getter. */
@@ -105,6 +136,16 @@ export class WhiteboardEditor implements ToolHost {
   private readonly textOverlay: TextOverlay;
   private readonly textPlaceholder: () => string;
   private readonly textAriaLabel: () => string;
+  private readonly onReadOnlyChange: ((readOnly: boolean) => void) | undefined;
+
+  /**
+   * The camera. Per-user view state — deliberately not part of the scene, so it
+   * cannot be broadcast to collaborators or captured in a baseline snapshot.
+   */
+  private viewport: Viewport;
+  private readOnly: boolean;
+  /** Memoised `{scene, bytes, objects}` for {@link getSummary}. */
+  private summaryCache: { scene: Scene; bytes: number; objects: number } | null = null;
   private readonly tools = new Map<ToolName, Tool>();
   private readonly listeners = new Map<EditorEventName, Set<() => void>>();
 
@@ -126,6 +167,9 @@ export class WhiteboardEditor implements ToolHost {
     this.style = { ...DEFAULT_STYLE, ...(options.style ?? {}) };
     this.textPlaceholder = textOption(options.textPlaceholder);
     this.textAriaLabel = textOption(options.textAriaLabel);
+    this.onReadOnlyChange = options.onReadOnlyChange;
+    this.viewport = { ...DEFAULT_VIEWPORT, ...(options.viewport ?? {}) };
+    this.readOnly = options.readOnly === true;
 
     const computed = typeof getComputedStyle === 'function' ? getComputedStyle(this.container) : null;
     if (computed && computed.position === 'static') this.container.style.position = 'relative';
@@ -190,6 +234,8 @@ export class WhiteboardEditor implements ToolHost {
     // The renderer subscribes first so nodes are reconciled before any listener
     // (including this editor's own) reacts to the same change.
     this.renderer.attach(this.store);
+    // The renderer is told the camera explicitly: it is not in the scene it syncs.
+    this.renderer.applyViewport(this.viewport);
     this.unsubscribe = this.store.subscribe(() => this.handleStoreChange());
 
     if (options.observeResize !== false && typeof ResizeObserver !== 'undefined') {
@@ -247,14 +293,78 @@ export class WhiteboardEditor implements ToolHost {
     return this.tool.name;
   }
 
+  // --------------------------------------------------------------- read-only
+
+  /**
+   * Whether this editor refuses local mutation.
+   *
+   * Read-only is not "hide the toolbar": every path that could write to the
+   * document is closed here, in the editor, because a viewer that merely *looks*
+   * disabled will eventually be written to by a host that forgot to check. The
+   * camera stays live — panning and zooming are the viewer's own view state and
+   * never touch the document.
+   */
+  isReadOnly(): boolean {
+    return this.readOnly;
+  }
+
+  /**
+   * Flip read-only at runtime.
+   *
+   * Products mount read-only and unlock when permission arrives (a student is
+   * invited to the stage, a co-host is promoted), so this must be safe to call
+   * at any moment — including mid-gesture. Turning it *on* aborts whatever the
+   * user was doing and resets the tool, because "no residual tool state" is the
+   * requirement: a half-drawn stroke that resumes after permission is revoked is
+   * exactly the accident the gating exists to prevent.
+   */
+  setReadOnly(readOnly: boolean): void {
+    if (readOnly === this.readOnly) return;
+    this.readOnly = readOnly;
+    if (readOnly) {
+      this.abortGesture();
+      this.setSelection([]);
+      // A mutating tool left selected would look armed; go back to Select.
+      this.setTool('select');
+      this.renderer.batchDraw();
+    }
+    this.canvasHost.style.cursor = this.readOnly ? 'grab' : this.spaceDown ? 'grab' : this.tool.cursor;
+    this.emit('readonly');
+    this.onReadOnlyChange?.(readOnly);
+  }
+
+  /** Drop any in-flight gesture and let the active tool discard its preview. */
+  private abortGesture(): void {
+    this.textOverlay.close();
+    this.textOverlayWorld = null;
+    this.pan = null;
+    if (this.activePointerId !== null) {
+      if (this.canvasHost.hasPointerCapture(this.activePointerId)) {
+        this.canvasHost.releasePointerCapture(this.activePointerId);
+      }
+      this.activePointerId = null;
+    }
+    // Tools cancel their in-flight work in `deactivate`; re-arm immediately.
+    this.tool.deactivate?.();
+    this.tool.activate?.();
+    this.refreshTransformer();
+    this.renderer.batchDraw();
+  }
+
   // ------------------------------------------------------------- ToolHost API
 
   getScene(): Scene {
     return this.store.getState();
   }
 
+  /** A copy: the camera belongs to the editor, and callers must not mutate it. */
   getViewport(): Viewport {
-    return this.store.getState().viewport;
+    return { ...this.viewport };
+  }
+
+  /** Replace the camera outright — host restore, or a "go to object" feature. */
+  setViewport(viewport: Viewport): void {
+    this.applyViewport(viewport);
   }
 
   getSelection(): Id[] {
@@ -314,11 +424,14 @@ export class WhiteboardEditor implements ToolHost {
     } else {
       this.transformer.forceUpdate();
     }
-    this.transformer.visible(this.selection.length > 0 && this.tool.name === 'select' && !this.textOverlay.isOpen());
+    this.transformer.visible(
+      !this.readOnly && this.selection.length > 0 && this.tool.name === 'select' && !this.textOverlay.isOpen(),
+    );
     this.overlay.batchDraw();
   }
 
   openTextEditor(request: TextEditorRequest): void {
+    if (this.readOnly) return;
     // Clicking away from an open editor commits it rather than discarding it.
     if (this.textOverlay.isOpen()) this.textOverlay.commit();
     this.textOverlayWorld = { x: request.world.x, y: request.world.y, rotation: request.rotation };
@@ -345,6 +458,7 @@ export class WhiteboardEditor implements ToolHost {
   // ------------------------------------------------------------------- style
 
   setStyle(partial: Partial<EditorStyle>): void {
+    if (this.readOnly) return;
     const keys = Object.keys(partial) as StyleKey[];
     if (keys.length === 0) return;
     this.style = { ...this.style, ...partial };
@@ -381,6 +495,7 @@ export class WhiteboardEditor implements ToolHost {
   // ------------------------------------------------------------------ editing
 
   deleteSelection(): void {
+    if (this.readOnly) return;
     const ids = this.selection.slice();
     if (ids.length === 0) return;
     const store = this.store;
@@ -404,6 +519,7 @@ export class WhiteboardEditor implements ToolHost {
   }
 
   paste(): Id[] {
+    if (this.readOnly) return [];
     if (this.clipboard.length === 0) return [];
     const created = this.createFrom(this.clipboard, PASTE_OFFSET);
     this.setSelection(created);
@@ -411,6 +527,7 @@ export class WhiteboardEditor implements ToolHost {
   }
 
   duplicateSelection(): Id[] {
+    if (this.readOnly) return [];
     const sources = this.selection
       .map((id) => this.store.getObject(id))
       .filter((object): object is SceneObject => object !== undefined)
@@ -442,10 +559,12 @@ export class WhiteboardEditor implements ToolHost {
   }
 
   bringToFront(): void {
+    if (this.readOnly) return;
     this.reorder('front');
   }
 
   sendToBack(): void {
+    if (this.readOnly) return;
     this.reorder('back');
   }
 
@@ -537,6 +656,37 @@ export class WhiteboardEditor implements ToolHost {
     return this.store.canRedo();
   }
 
+  /**
+   * A cheap summary of the document, for a host status bar.
+   *
+   * The first host application shows "baseline objects / saved bytes / editable"
+   * and needs it to update as the user draws *and* as the board is saved, so the
+   * byte count is the real serialized size rather than an estimate. It is cached
+   * against the scene reference: computing it per repaint would serialize the
+   * whole document on every pointer move.
+   */
+  getSummary(): EditorSummary {
+    const scene = this.store.getState();
+    if (this.summaryCache?.scene !== scene) {
+      this.summaryCache = {
+        scene,
+        bytes: serialize(scene).length,
+        objects: scene.order.length,
+      };
+    }
+    const zoom = this.viewport.scale;
+    return {
+      objects: this.summaryCache.objects,
+      bytes: this.summaryCache.bytes,
+      selection: this.selection.length,
+      zoom,
+      readOnly: this.readOnly,
+      canUndo: this.store.canUndo(),
+      canRedo: this.store.canRedo(),
+      isEmpty: scene.order.length === 0,
+    };
+  }
+
   // ------------------------------------------------------------------ camera
 
   zoomBy(factor: number, screenPoint?: Point): void {
@@ -559,14 +709,12 @@ export class WhiteboardEditor implements ToolHost {
   }
 
   private applyViewport(viewport: Viewport): void {
-    this.store.commit({
-      type: 'viewport.set',
-      patch: setViewportOps(viewport),
-      source: 'system',
-      transient: true,
-      label: 'Viewport',
-    });
+    const next = { ...viewport, scale: clampScale(viewport.scale) };
+    if (next.x === this.viewport.x && next.y === this.viewport.y && next.scale === this.viewport.scale) return;
+    this.viewport = next;
+    this.renderer.applyViewport(next);
     if (this.textOverlay.isOpen()) this.repositionTextOverlay();
+    this.emit('viewport');
   }
 
   private repositionTextOverlay(): void {
@@ -615,10 +763,39 @@ export class WhiteboardEditor implements ToolHost {
     return scene;
   }
 
+  /**
+   * Reset the document and **discard history**. This is "open a different board",
+   * not "clear the board": the camera survives (it is not in the document) but
+   * nothing can be undone afterwards.
+   */
   clear(): void {
-    const viewport = this.getViewport();
     this.setSelection([]);
-    this.store.reset(createEmptyScene(viewport));
+    this.store.reset(createEmptyScene());
+  }
+
+  /**
+   * Delete every object as one undoable step, and return how many went.
+   *
+   * This is the "clear the board" a classroom actually needs. The reset above
+   * cannot serve it: destroying the undo history at the exact moment a teacher
+   * wipes the room is how a mis-click becomes a lost lesson. Deleting through the
+   * ordinary command path also means the wipe is broadcast like any other edit,
+   * so every participant converges on the same empty board.
+   */
+  clearAll(): number {
+    if (this.readOnly) return 0;
+    const ids = this.store.getState().order;
+    if (ids.length === 0) return 0;
+    this.setSelection([]);
+    this.store.transaction(
+      (_scene, tx) => {
+        for (const id of [...ids].reverse()) {
+          this.store.dispatch(tx.commit('object.delete', removeObjectOps(this.store.getState(), id)));
+        }
+      },
+      { label: 'Clear board' },
+    );
+    return ids.length;
   }
 
   exportPNG(pixelRatio = 2): string {
@@ -729,6 +906,15 @@ export class WhiteboardEditor implements ToolHost {
       return;
     }
     if (event.button !== 0) return;
+    if (this.readOnly) {
+      // An audience has no other use for the left button, so dragging pans rather
+      // than doing nothing: "you cannot edit" must not mean "you cannot look
+      // around". The camera is view state and never reaches the document.
+      event.preventDefault();
+      this.pan = { pointerId: event.pointerId, last: info.screen };
+      this.canvasHost.setPointerCapture(event.pointerId);
+      return;
+    }
 
     // Selection handles belong to Konva's Transformer. Content nodes are all
     // `listening(false)`, so anything the hit graph reports here is editor UI —
@@ -754,7 +940,7 @@ export class WhiteboardEditor implements ToolHost {
       this.applyViewport(panBy(this.getViewport(), dx, dy));
       return;
     }
-    this.tool.onPointerMove?.(info);
+    if (!this.readOnly) this.tool.onPointerMove?.(info);
   };
 
   private readonly handlePointerUp = (event: PointerEvent): void => {
@@ -772,10 +958,11 @@ export class WhiteboardEditor implements ToolHost {
         this.canvasHost.releasePointerCapture(event.pointerId);
       }
     }
-    this.tool.onPointerUp?.(info);
+    if (!this.readOnly) this.tool.onPointerUp?.(info);
   };
 
   private readonly handleDoubleClick = (event: MouseEvent): void => {
+    if (this.readOnly) return;
     const rect = this.canvasHost.getBoundingClientRect();
     const screen = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     this.tool.onDoubleClick?.({

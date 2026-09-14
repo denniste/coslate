@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>CoSlate — viewer</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314161a'/%3E%3Cpath d='M9 22c4-1 6-4 7-9 1 5 3 8 7 9' stroke='%234dabf7' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <meta name="description" content="CoSlate read-only viewer: a projection of a scene with no editor and no chrome." />
+  </head>
+  <body>
+    <!-- Full-screen, read-only: no toolbar, no status bar, no input handlers. -->
+    <main id="viewer" class="viewer-host" aria-label="CoSlate read-only viewer"></main>
+    <script type="module" src="/src/viewer.ts"></script>
+  </body>
+</html>

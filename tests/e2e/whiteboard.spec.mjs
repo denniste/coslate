@@ -480,7 +480,8 @@ try {
     const live = await getScene(page);
 
     assert.equal(document.format, 'coslate/scene', 'saved document has the format tag');
-    assert.equal(document.version, 1, 'saved document has version 1');
+    assert.equal(document.version, 2, 'saved document is version 2 (camera left the document)');
+    assert.equal('viewport' in document, false, 'the saved document must not carry a camera');
     assert.deepEqual(document.order, live.order, 'saved paint order matches the live scene');
     assert.deepEqual(
       Object.keys(document.objects).sort(),
@@ -960,6 +961,343 @@ try {
     await page.keyboard.press('Escape');
     await shot(page, 't-zh-hant');
     return `zh → zh-CN, zh-TW → zh-Hant, field "${field.ariaLabel}"/"${field.placeholder}", ${tw.languages.length} languages`;
+  });
+
+  // ------------------------------------------------- u. read-only (R1 / R2)
+  await check('u', 'read-only refuses every local mutation, keeps the camera live, and leaves no tool state', async () => {
+    const record = {
+      id: 'remote-1',
+      type: 'shape.rect',
+      version: 1,
+      x: 40,
+      y: 40,
+      width: 120,
+      height: 90,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      z: 0,
+      visible: true,
+      locked: false,
+      data: { fill: null, stroke: '#51cf66', strokeWidth: 4, cornerRadius: 0 },
+    };
+
+    await page.evaluate(() => {
+      window.__scene.clear();
+      window.__scene.setReadOnly(false);
+      window.__scene.setTool('pen');
+    });
+    await page.waitForFunction(() => window.__scene.getScene().order.length === 0);
+
+    // Mid-gesture revocation: press, move, revoke permission, then release.
+    const from = at(300, 300);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 120, from.y + 90, { steps: 10 });
+    await page.evaluate(() => window.__scene.setReadOnly(true));
+    await page.mouse.up();
+    await page.waitForTimeout(60);
+
+    const afterRevoke = await page.evaluate(() => ({
+      objects: window.__scene.getScene().order.length,
+      readOnly: window.__scene.isReadOnly(),
+      tool: window.__scene.getToolName(),
+    }));
+    assert.equal(afterRevoke.objects, 0, 'a stroke interrupted by a permission change must not land');
+    assert.equal(afterRevoke.readOnly, true, 'the editor should report read-only');
+    assert.equal(afterRevoke.tool, 'select', `the tool should reset, found ${afterRevoke.tool}`);
+
+    // Every mutating entry point is closed, not just the pointer.
+    const refused = await page.evaluate((r) => {
+      const hook = window.__scene;
+      hook.applyDelta({ added: [r], order: [r.id] });
+      const seeded = hook.getScene().order.length;
+      hook.setStyle({ stroke: '#ff0000' });
+      hook.deleteSelection();
+      hook.duplicateSelection();
+      hook.setSelection([r.id]);
+      hook.deleteSelection();
+      return {
+        seeded,
+        objects: hook.getScene().order.length,
+        stroke: hook.getScene().objects[r.id].data.stroke,
+        selection: hook.getSelection().length,
+        cleared: hook.clearAll(),
+      };
+    }, record);
+    assert.equal(refused.seeded, 1, 'a read-only editor must still accept remote records');
+    assert.equal(refused.objects, 1, 'delete/duplicate must not remove anything while read-only');
+    assert.equal(refused.stroke, '#51cf66', 'style changes must be refused while read-only');
+    assert.equal(refused.cleared, 0, 'clearAll must refuse while read-only');
+
+    // The camera is view state, not document state: a viewer still navigates.
+    const beforeZoom = await getViewport(page);
+    await page.mouse.move(box.x + 400, box.y + 300);
+    await page.mouse.wheel(0, -240);
+    const afterZoom = await getViewport(page);
+    assert.ok(afterZoom.scale > beforeZoom.scale, 'a read-only board must still zoom');
+
+    // ...including dragging to pan, which an audience has no other use for.
+    const beforePan = await getViewport(page);
+    await page.mouse.move(box.x + 400, box.y + 300);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 300, box.y + 240, { steps: 6 });
+    await page.mouse.up();
+    const afterPan = await getViewport(page);
+    assert.ok(
+      Math.abs(afterPan.x - beforePan.x) > 1 || Math.abs(afterPan.y - beforePan.y) > 1,
+      'dragging on a read-only board should pan the camera',
+    );
+    assert.equal(afterPan.scale, beforePan.scale, 'panning must not change the zoom');
+
+    // And nothing was written while read-only.
+    const persisted = await page.evaluate(() => window.__scene.toJSON());
+    assert.equal(JSON.parse(persisted).objects['remote-1'].data.stroke, '#51cf66', 'the document is unchanged');
+
+    await page.evaluate(() => window.__scene.setReadOnly(false));
+    await shot(page, 'u-readonly');
+    return 'mid-gesture revocation, closed API, live camera';
+  });
+
+  // --------------------------------------- v. record replay (R3 / R4)
+  await check('v', 'replaying the same record delta is idempotent and never touches undo history', async () => {
+    const delta = {
+      added: [
+        {
+          id: 'peer-a',
+          type: 'shape.rect',
+          version: 1,
+          x: 10,
+          y: 10,
+          width: 60,
+          height: 60,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          z: 0,
+          visible: true,
+          locked: false,
+          data: { fill: null, stroke: '#ffd43b', strokeWidth: 2, cornerRadius: 0 },
+        },
+      ],
+      order: ['peer-a'],
+    };
+
+    await page.evaluate(() => {
+      window.__scene.clear();
+      window.__scene.setReadOnly(false);
+    });
+
+    const replayed = await page.evaluate((d) => {
+      const hook = window.__scene;
+      const depthBefore = hook.store.historyDepth().undo;
+      for (let i = 0; i < 5; i += 1) hook.applyDelta(d);
+      const scene = hook.getScene();
+      return {
+        order: scene.order,
+        objects: Object.keys(scene.objects).length,
+        depthBefore,
+        depthAfter: hook.store.historyDepth().undo,
+        undoable: hook.store.canUndo(),
+      };
+    }, delta);
+
+    assert.deepEqual(replayed.order, ['peer-a'], `replay duplicated the order: ${JSON.stringify(replayed.order)}`);
+    assert.equal(replayed.objects, 1, 'replay created extra objects');
+    assert.equal(replayed.depthAfter, replayed.depthBefore, 'a remote delta must not enter the undo history');
+    assert.equal(replayed.undoable, false, 'there is nothing local to undo');
+
+    // The document is still loadable: this is the exact failure the old patch
+    // replay caused, where the duplicated order made validation reject the scene.
+    const roundTrip = await page.evaluate(() => {
+      const text = window.__scene.toJSON();
+      window.__scene.loadJSON(text);
+      return { version: JSON.parse(text).version, order: window.__scene.getScene().order };
+    });
+    assert.equal(roundTrip.version, 2, 'the document should still be v2');
+    assert.deepEqual(roundTrip.order, ['peer-a'], 'the scene must survive a save/load round trip');
+
+    // Local edits stay undoable, and undo must not reach into the peer's object.
+    const mixed = await page.evaluate(() => {
+      const hook = window.__scene;
+      hook.setTool('select');
+      hook.applyDelta({ updated: [{ ...hook.getScene().objects['peer-a'], x: 200 }] });
+      return { x: hook.getScene().objects['peer-a'].x, canUndo: hook.store.canUndo() };
+    });
+    assert.equal(mixed.x, 200, 'the newest state of an object should win');
+    assert.equal(mixed.canUndo, false, 'remote updates are not local history');
+
+    // Malformed input is refused without throwing and without changing anything.
+    const garbage = await page.evaluate(() => {
+      const hook = window.__scene;
+      const before = JSON.stringify(hook.getScene().order);
+      hook.applyDelta({ added: [{ nope: true }] });
+      hook.applyDelta(null);
+      return { before, after: JSON.stringify(hook.getScene().order) };
+    });
+    assert.equal(garbage.after, garbage.before, 'garbage deltas must not change the document');
+
+    await shot(page, 'v-records');
+    return '5x replay → one entry, no history, still serializable';
+  });
+
+  // ------------------------------- w. summary + hide-all-chrome (R8 / R10)
+  await check('w', 'the status summary tracks the document, and the chrome can vanish entirely', async () => {
+    await page.evaluate(() => {
+      window.__scene.clear();
+      window.__scene.setReadOnly(false);
+      window.__chrome.setChromeVisible(true);
+    });
+
+    // An empty board must say so — that is what stops a baseline being written.
+    const empty = await page.evaluate(() => window.__scene.getSummary());
+    assert.equal(empty.objects, 0, 'a cleared board has no objects');
+    assert.equal(empty.isEmpty, true, 'an empty board should report isEmpty');
+    assert.equal(empty.readOnly, false, 'the editor is editable');
+
+    await page.click('[data-testid="tool-rect"]');
+    const from = at(420, 260);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 140, from.y + 100, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForFunction(() => window.__scene.getScene().order.length === 1);
+
+    const summary = await page.evaluate(() => {
+      const scene = window.__scene.getScene();
+      return {
+        ...window.__scene.getSummary(),
+        // The compact form a server stores; `toJSON()` is pretty-printed.
+        serialized: JSON.stringify(scene).length,
+      };
+    });
+    assert.equal(summary.objects, 1, 'the summary should follow the document');
+    assert.equal(summary.isEmpty, false, 'a board with an object is not empty');
+    // The byte count is what a server would store, not an estimate.
+    assert.equal(summary.bytes, summary.serialized, `summary reported ${summary.bytes} bytes, document is ${summary.serialized}`);
+    assert.ok(summary.canUndo, 'a local edit is undoable');
+
+    // R7: clearing the board is ONE undoable step, not a history reset.
+    const wiped = await page.evaluate(() => {
+      const hook = window.__scene;
+      const before = hook.getScene().order.length;
+      const removed = hook.clearAll();
+      const after = hook.getScene().order.length;
+      const undone = hook.store.undo();
+      return { before, removed, after, undone, restored: hook.getScene().order.length };
+    });
+    assert.equal(wiped.removed, wiped.before, 'clearAll should report what it removed');
+    assert.equal(wiped.after, 0, 'clearAll should leave an empty board');
+    assert.equal(wiped.undone, true, 'clearing the board must be undoable');
+    assert.equal(wiped.restored, wiped.before, 'one undo must bring the whole board back');
+
+    // The published z-index contract: a host needs to know what to sit above.
+    const zContract = await page.evaluate(() => {
+      const root = document.querySelector('.coslate-ui') ?? document.querySelector('#toolbar')?.parentElement;
+      const styles = root ? getComputedStyle(root) : null;
+      return {
+        zChrome: styles?.getPropertyValue('--coslate-z-chrome').trim() ?? '',
+        zTooltip: styles?.getPropertyValue('--coslate-z-tooltip').trim() ?? '',
+      };
+    });
+    assert.ok(zContract.zChrome.length > 0, 'the chrome must publish --coslate-z-chrome');
+    assert.ok(zContract.zTooltip.length > 0, 'the chrome must publish --coslate-z-tooltip');
+
+    // Mini state: every piece of chrome gone, canvas keeps the space.
+    const fullCanvas = await page.evaluate(() => document.querySelector('#canvas-host').getBoundingClientRect().height);
+    const mini = await page.evaluate(() => {
+      window.__chrome.setChromeVisible(false);
+      const visible = (node) => node !== null && node.getBoundingClientRect().height > 0 && getComputedStyle(node).display !== 'none';
+      return {
+        chromeVisible: window.__chrome.isChromeVisible(),
+        toolbar: visible(document.querySelector('#toolbar')),
+        statusbar: visible(document.querySelector('#statusbar')),
+        canvasHeight: document.querySelector('#canvas-host').getBoundingClientRect().height,
+        controls: [...document.querySelectorAll('#toolbar button, #statusbar button')].filter((n) => n.offsetParent !== null).length,
+      };
+    });
+    assert.equal(mini.chromeVisible, false, 'the chrome should report hidden');
+    assert.equal(mini.toolbar, false, 'the toolbar must be gone in mini state');
+    assert.equal(mini.statusbar, false, 'the status bar must be gone in mini state');
+    assert.equal(mini.controls, 0, 'no chrome control may remain focusable while hidden');
+    assert.ok(
+      mini.canvasHeight > fullCanvas,
+      `the canvas should reclaim the chrome height (${Math.round(fullCanvas)} -> ${Math.round(mini.canvasHeight)})`,
+    );
+    await shot(page, 'w-mini');
+
+    // ...and back again.
+    const restored = await page.evaluate(() => {
+      window.__chrome.setChromeVisible(true);
+      return {
+        visible: window.__chrome.isChromeVisible(),
+        toolbarHeight: Math.round(document.querySelector('#toolbar').getBoundingClientRect().height),
+      };
+    });
+    assert.equal(restored.visible, true, 'the chrome should come back');
+    assert.ok(restored.toolbarHeight > 0, 'the toolbar should be laid out again');
+    return `summary ${summary.objects} object / ${summary.bytes} bytes, mini reclaims ${Math.round(mini.canvasHeight - fullCanvas)}px`;
+  });
+
+  // ------------------------------------- x. the viewer page (R1, no editor)
+  await check('x', 'the viewer page renders a stream, replays safely, and has no way to edit', async () => {
+    const delta = {
+      added: [
+        {
+          id: 'viewer-1',
+          type: 'shape.ellipse',
+          version: 1,
+          x: 60,
+          y: 60,
+          width: 160,
+          height: 120,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          z: 0,
+          visible: true,
+          locked: false,
+          data: { fill: null, stroke: '#4dabf7', strokeWidth: 3 },
+        },
+      ],
+      order: ['viewer-1'],
+    };
+
+    await page.goto(`${BASE_URL}viewer.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(window.__viewer), null, { timeout: 10_000 });
+    // The viewer page has its own container; the renderer mounts inside it.
+    await page.waitForSelector('#viewer canvas, .coslate-canvas-host canvas');
+
+    const result = await page.evaluate((payload) => {
+      const viewer = window.__viewer;
+      const first = viewer.applyDelta(payload);
+      const replay = viewer.applyDelta(JSON.parse(JSON.stringify(payload)));
+      const scene = viewer.getScene();
+      return {
+        first,
+        replay,
+        order: scene.order,
+        objects: Object.keys(scene.objects).length,
+        hasEditor: typeof window.__scene !== 'undefined',
+        editableNodes: document.querySelectorAll('[data-testid]').length,
+        canvases: document.querySelectorAll('.coslate-canvas-host canvas').length,
+      };
+    }, delta);
+
+    assert.equal(result.first, true, 'the viewer should accept the delta');
+    assert.equal(result.replay, false, 'replaying the same frame must change nothing');
+    assert.deepEqual(result.order, ['viewer-1'], `viewer order was ${JSON.stringify(result.order)}`);
+    assert.equal(result.objects, 1, 'the viewer should hold exactly one object');
+    assert.equal(result.hasEditor, false, 'no editor may be mounted on the viewer page');
+    assert.equal(result.editableNodes, 0, 'the viewer must expose no editable controls');
+    assert.equal(result.canvases, 3, 'the viewer still renders the grid/content/overlay layers');
+
+    await shot(page, 'x-viewer');
+
+    // Back to the editor page, so the app state is where a later check expects it.
+    await page.goto(BASE_URL, { waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+    return 'viewer renders, replay is a no-op, no editor and no editable controls';
   });
 
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;

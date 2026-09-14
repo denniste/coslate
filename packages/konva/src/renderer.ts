@@ -195,8 +195,6 @@ export class SceneRenderer {
         if (node) node.zIndex(index);
       });
     }
-
-    this.applyViewport(scene.viewport);
   }
 
   /**

@@ -1,4 +1,5 @@
 import { createI18n, type Direction, type I18n, type MessageParams } from '@coslate/core';
+import type { ChromeI18n } from '@coslate/ui';
 import { en, type DemoCatalog, type MessageKey } from './catalog-en.js';
 import { zhCN } from './catalog-zh-CN.js';
 import { zhHant } from './catalog-zh-Hant.js';
@@ -40,13 +41,13 @@ export interface LanguageOption {
   label: string;
 }
 
-export interface DemoI18n {
+export interface DemoI18n extends ChromeI18n<MessageKey> {
+  /** The core translator, for the places that need more than the chrome does. */
   readonly i18n: I18n<DemoCatalog>;
   readonly languages: readonly LanguageOption[];
   readonly storageKey: string;
   /** Switch, remember, reflect into the URL, and update the document. */
   setLocale(tag: string): string;
-  t(key: MessageKey, params?: MessageParams): string;
 }
 
 declare global {
@@ -117,6 +118,16 @@ export function installI18n(): DemoI18n {
     i18n,
     languages,
     storageKey: STORAGE_KEY,
+    // The chrome-facing surface: the same translator, plus the language menu's
+    // options and the locale-change subscription. `@coslate/ui` never needs to
+    // know that `@coslate/core` sits behind it.
+    get locale() {
+      return i18n.locale;
+    },
+    get dir() {
+      return i18n.dir;
+    },
+    subscribe: (listener) => i18n.subscribe(listener),
     t: (key, params) => i18n.t(key, params),
     setLocale(tag) {
       const resolved = i18n.setLocale(tag);

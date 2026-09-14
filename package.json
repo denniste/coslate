@@ -10,8 +10,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @coslate/core build && pnpm --filter @coslate/konva build && pnpm --filter @coslate/demo dev",
-    "build": "tsc -b packages/core packages/konva && pnpm --filter @coslate/demo build",
+    "dev": "pnpm --filter @coslate/core build && pnpm --filter @coslate/konva build && pnpm --filter @coslate/ui build && pnpm --filter @coslate/demo dev",
+    "build": "tsc -b packages/core packages/konva packages/ui && pnpm --filter @coslate/demo build",
     "preview": "pnpm --filter @coslate/demo preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -25,6 +25,7 @@
     "vitest": "^2.1.8",
     "@types/node": "^22.10.1",
     "@coslate/core": "workspace:*",
-    "@coslate/konva": "workspace:*"
+    "@coslate/konva": "workspace:*",
+    "@coslate/ui": "workspace:*"
   }
 }

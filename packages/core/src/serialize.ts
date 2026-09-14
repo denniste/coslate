@@ -57,8 +57,7 @@ export function registerMigration(fromVersion: number, migration: Migration): vo
  * Walk a raw document forward to `target` (default {@link SCENE_VERSION}).
  * Throws {@link SceneSerializationError} for future or unmigratable versions.
  *
- * `target` is exposed mainly so the migration chain is testable today, while
- * `SCENE_VERSION` is still 1 and no real migration exists yet.
+ * `target` is exposed mainly so the migration chain is testable in isolation.
  */
 export function migrate(raw: unknown, target: number = SCENE_VERSION): RawDocument {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
@@ -129,20 +128,6 @@ export function validateScene(raw: unknown): Scene {
   if (!isRecord(raw)) {
     throw new SceneSerializationError('INVALID_SCENE', 'scene must be an object');
   }
-  const viewportRaw = raw.viewport;
-  if (!isRecord(viewportRaw)) {
-    throw new SceneSerializationError('INVALID_SCENE', 'scene.viewport must be an object');
-  }
-  const scale = requireNumber(viewportRaw, 'scale', 'scene.viewport');
-  if (scale <= 0) {
-    throw new SceneSerializationError('INVALID_SCENE', 'scene.viewport.scale must be > 0');
-  }
-  const viewport = {
-    x: requireNumber(viewportRaw, 'x', 'scene.viewport'),
-    y: requireNumber(viewportRaw, 'y', 'scene.viewport'),
-    scale,
-  };
-
   const objectsRaw = raw.objects;
   if (!isRecord(objectsRaw)) {
     throw new SceneSerializationError('INVALID_SCENE', 'scene.objects must be an object map');
@@ -210,7 +195,6 @@ export function validateScene(raw: unknown): Scene {
   const scene: Scene = {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
-    viewport,
     objects,
     order,
   };
@@ -255,4 +239,72 @@ export function deserialize(input: string | unknown): Scene {
 /** Round-trip helper used by exporters and tests. */
 export function cloneScene(scene: Scene): Scene {
   return deserialize(serialize(scene));
+}
+
+// --------------------------------------------------------------- migrations --
+
+/**
+ * v1 → v2: the camera leaves the document.
+ *
+ * Version 1 kept `viewport` in the scene, which made a shared document carry the
+ * *publisher's* view of it. The field is dropped rather than moved: a camera is
+ * per-user view state, and there is nothing sensible to restore from a document
+ * that recorded somebody else's pan position. A host that wants to remember its
+ * user's camera persists it itself (the demo keeps it under its own key).
+ */
+registerMigration(1, (document) => {
+  const { viewport: _dropped, ...rest } = document;
+  return rest;
+});
+
+// ---------------------------------------------------------------- baselines --
+
+/**
+ * Whether a scene has nothing worth saving.
+ *
+ * The server-side baseline is an opaque blob with an 8 MB cap and a TTL; a board
+ * with no objects should not occupy one, and an empty board read back is
+ * indistinguishable from no baseline at all. Hosts use this to decide whether to
+ * write at all.
+ */
+export function isSceneEmpty(scene: Scene): boolean {
+  return scene.order.length === 0;
+}
+
+export type BaselineReadResult =
+  | { status: 'ok'; scene: Scene }
+  | { status: 'empty'; reason: 'absent' | SerializeErrorCode; detail: string };
+
+/**
+ * Read a stored baseline *without throwing*, for the paths where "I cannot
+ * understand this" must mean "start from an empty board" rather than "the room
+ * fails to open".
+ *
+ * This is the one place where CoSlate deliberately does not fail loudly, and the
+ * difference from {@link deserialize} is the point: `deserialize` is for files a
+ * user chose to open (where refusing beats eating their drawing), while a
+ * baseline is a cache the server may be holding from a different engine
+ * entirely. Old tldraw snapshots in Redis are the concrete case — they carry a
+ * different `format`, and they must age out quietly instead of breaking a
+ * classroom.
+ *
+ * The `reason` is returned rather than swallowed so a host can still log,
+ * count or alert on it.
+ */
+export function readBaseline(input: string | unknown): BaselineReadResult {
+  if (input === null || input === undefined || input === '' || (typeof input === 'string' && input.trim() === '')) {
+    return { status: 'empty', reason: 'absent', detail: 'no baseline stored' };
+  }
+  try {
+    return { status: 'ok', scene: deserialize(input) };
+  } catch (error) {
+    if (error instanceof SceneSerializationError) {
+      return { status: 'empty', reason: error.code, detail: error.detail };
+    }
+    return {
+      status: 'empty',
+      reason: 'INVALID_DOCUMENT',
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

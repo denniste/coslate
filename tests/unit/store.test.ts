@@ -275,27 +275,30 @@ describe('store: transient commands', () => {
     const store = createStore();
     store.commit({ type: 'object.create', patch: addObjectOps(rect('a', 0, 0)) });
     store.commit({
-      type: 'viewport.set',
-      patch: [{ op: 'replace', path: '/viewport/scale', value: 2 }],
+      type: 'object.move',
+      patch: [{ op: 'replace', path: '/objects/a/x', value: 400 }],
       transient: true,
     });
-    expect(store.getState().viewport.scale).toBe(2);
+    expect(store.getState().objects.a!.x).toBe(400);
     expect(store.historyDepth().undo).toBe(1);
 
-    // Undo skips the camera move and reverts the content edit.
+    // Undo skips the transient edit and reverts the content edit.
     store.undo();
     expect(store.getState().order).toEqual([]);
-    expect(store.getState().viewport.scale).toBe(2);
   });
 
   it('does not create a history entry for an all-transient transaction', () => {
     const store = createStore();
+    store.commit({ type: 'object.create', patch: addObjectOps(rect('a', 0, 0)) });
     store.transaction((_scene, tx) => {
-      store.dispatch(tx.commit('viewport.set', [{ op: 'replace', path: '/viewport/x', value: 10 }], { transient: true }));
-      store.dispatch(tx.commit('viewport.set', [{ op: 'replace', path: '/viewport/y', value: 20 }], { transient: true }));
+      store.dispatch(tx.commit('object.move', [{ op: 'replace', path: '/objects/a/x', value: 10 }], { transient: true }));
+      store.dispatch(tx.commit('object.move', [{ op: 'replace', path: '/objects/a/y', value: 20 }], { transient: true }));
     });
-    expect(store.getState().viewport).toEqual({ x: 10, y: 20, scale: 1 });
-    expect(store.canUndo()).toBe(false);
+    expect(store.getState().objects.a!.x).toBe(10);
+    expect(store.getState().objects.a!.y).toBe(20);
+    // Only the create is undoable; the transient pair added no step of its own.
+    store.undo();
+    expect(store.getState().order).toEqual([]);
   });
 });
 
@@ -303,7 +306,7 @@ describe('store: reset', () => {
   it('replaces the document and clears history', () => {
     const store = createStore();
     store.commit({ type: 'object.create', patch: addObjectOps(rect('a', 0, 0)) });
-    const fresh = createEmptyScene({ x: 5, y: 5, scale: 2 });
+    const fresh = createEmptyScene();
     store.reset(fresh);
     expect(store.getState()).toBe(fresh);
     expect(store.canUndo()).toBe(false);

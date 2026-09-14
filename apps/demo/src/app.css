@@ -1,0 +1,52 @@
+:root {
+  --bg: #0f1115;
+  --text: #e8eaed;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* The canvas is the host's; the chrome only fills the bars around it. */
+.canvas-host {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: #14161a;
+}
+
+.coslate-text-overlay {
+  min-width: 8px;
+  border-radius: 2px;
+}
+
+/* The read-only viewer entry: one full-screen canvas, no chrome at all. */
+.viewer-host {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: #14161a;
+}

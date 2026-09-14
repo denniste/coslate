@@ -77,6 +77,7 @@ export {
   boundsIntersect,
   boundsOfPoints,
   clampScale,
+  DEFAULT_VIEWPORT,
   expandBounds,
   fitToContent,
   MAX_SCALE,
@@ -92,16 +93,36 @@ export {
   zoomTo,
 } from './viewport.js';
 
-export type { Migration, RawDocument, SerializeErrorCode, SerializeOptions } from './serialize.js';
+export type {
+  BaselineReadResult,
+  Migration,
+  RawDocument,
+  SerializeErrorCode,
+  SerializeOptions,
+} from './serialize.js';
 export {
   cloneScene,
   deserialize,
+  isSceneEmpty,
   migrate,
+  readBaseline,
   registerMigration,
   SceneSerializationError,
   serialize,
   validateScene,
 } from './serialize.js';
+
+export type { DeltaOptions, SceneDelta } from './records.js';
+export {
+  applyDelta,
+  deltaToCommands,
+  deltaToInverseCommands,
+  deltaToOps,
+  isEmptyDelta,
+  normalizeDelta,
+  recordsFromCommands,
+  shouldBroadcast,
+} from './records.js';
 
 export type { CreateObjectInput, ObjectPropPatch, ReorderTarget } from './patches.js';
 export {
@@ -111,7 +132,6 @@ export {
   removeObjectOps,
   reorderObjectOps,
   sceneFromObjects,
-  setViewportOps,
   updateObjectDataOps,
   updateObjectOps,
 } from './patches.js';

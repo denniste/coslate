@@ -1,5 +1,5 @@
-import type { Id, Point, Scene, SceneStore, Viewport } from '@coslate/core';
-import type { ToolName, WhiteboardEditor } from '@coslate/konva';
+import type { Id, Point, Scene, SceneDelta, SceneStore, Viewport } from '@coslate/core';
+import type { EditorStyle, EditorSummary, ToolName, WhiteboardEditor } from '@coslate/konva';
 
 /**
  * The test/debug hook.
@@ -22,10 +22,12 @@ export interface CoSlateTestHook {
   getViewport(): Viewport;
   /** Selected object ids. */
   getSelection(): Id[];
+  setSelection(ids: readonly Id[]): void;
   /** Scene coordinates for a viewport-relative screen point. */
   screenToWorld(x: number, y: number): Point;
   worldToScreen(x: number, y: number): Point;
   setTool(name: ToolName): void;
+  getToolName(): ToolName;
   undo(): boolean;
   redo(): boolean;
   /** Multiply the zoom by `factor`. */
@@ -36,9 +38,20 @@ export interface CoSlateTestHook {
   /** On-screen pixel size of an object's rendered node. */
   getRenderedSize(id: Id): { width: number; height: number } | null;
   deleteSelection(): void;
+  duplicateSelection(): Id[];
+  setStyle(partial: Partial<EditorStyle>): void;
   clear(): void;
+  /** Undoable "clear the board", as opposed to the destructive reset above. */
+  clearAll(): number;
   toJSON(): string;
   loadJSON(text: string): void;
+  // Collaboration / read-only surfaces, so the suite can drive the same paths a
+  // host would: a viewer that receives deltas, and permission that flips.
+  isReadOnly(): boolean;
+  setReadOnly(readOnly: boolean): void;
+  /** Feed the store an inbound object-state delta, exactly as a peer would. */
+  applyDelta(delta: SceneDelta): boolean;
+  getSummary(): EditorSummary;
 }
 
 declare global {
@@ -57,14 +70,23 @@ export function installTestHook(editor: WhiteboardEditor): CoSlateTestHook {
     screenToWorld: (x, y) => editor.screenToWorld({ x, y }),
     worldToScreen: (x, y) => editor.worldToScreen({ x, y }),
     setTool: (name) => editor.setTool(name),
+    getToolName: () => editor.getToolName(),
     undo: () => editor.undo(),
     redo: () => editor.redo(),
     zoomBy: (factor) => editor.zoomBy(factor),
     fit: () => editor.zoomToFit(),
     getRenderedScale: () => editor.getRenderedScale(),
     getRenderedSize: (id) => editor.getRenderedSize(id),
+    setSelection: (ids) => editor.setSelection(ids),
     deleteSelection: () => editor.deleteSelection(),
+    duplicateSelection: () => editor.duplicateSelection(),
+    setStyle: (partial) => editor.setStyle(partial),
     clear: () => editor.clear(),
+    clearAll: () => editor.clearAll(),
+    isReadOnly: () => editor.isReadOnly(),
+    setReadOnly: (readOnly) => editor.setReadOnly(readOnly),
+    applyDelta: (delta) => editor.store.applyDelta(delta),
+    getSummary: () => editor.getSummary(),
     toJSON: () => editor.toJSON(),
     loadJSON: (text) => {
       editor.loadJSON(text);

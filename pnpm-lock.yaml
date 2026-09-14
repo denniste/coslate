@@ -115,6 +115,9 @@ importers:
       '@coslate/konva':
         specifier: workspace:*
         version: link:packages/konva
+      '@coslate/ui':
+        specifier: workspace:*
+        version: link:packages/ui
       '@types/node':
         specifier: ^22.10.1
         version: 22.20.2
@@ -136,6 +139,9 @@ importers:
       '@coslate/konva':
         specifier: workspace:*
         version: link:../../packages/konva
+      '@coslate/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       konva:
         specifier: ^9.3.16
         version: 9.3.22
@@ -151,6 +157,12 @@ importers:
       '@coslate/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/ui:
+    devDependencies:
+      '@coslate/konva':
+        specifier: workspace:*
+        version: link:../konva
 
 packages:
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   cloneScene,
   createEmptyScene,
+  isSceneEmpty,
+  readBaseline,
   deserialize,
   makeObject,
   migrate,
@@ -28,7 +30,6 @@ function sampleScene(): Scene {
       }),
       makeObject({ type: 'shape.text', id: 't1', x: 5, y: 5, width: 100, height: 24, data: { text: 'hello' } }),
     ],
-    { x: -5, y: 12.5, scale: 1.25 },
   );
 }
 
@@ -116,8 +117,10 @@ describe('serialize: failure modes', () => {
       { ...base, order: ['ghost'] },
       { ...base, objects: { a: makeObject({ type: 'shape.rect', id: 'a', x: 0, y: 0, width: 1, height: 1 }) }, order: [] },
       { ...base, order: ['x', 'x'] },
-      { ...base, viewport: { x: 0, y: 0, scale: 0 } },
-      { ...base, viewport: { x: 0, y: 'nope', scale: 1 } },
+      { ...base, objects: { a: makeObject({ type: 'shape.rect', id: 'a', x: 0, y: 0, width: 1, height: 1 }) }, order: ['a', 'a'] },
+      { ...base, objects: { a: { ...makeObject({ type: 'shape.rect', id: 'a', x: 0, y: 0, width: 1, height: 1 }), x: 'nope' } }, order: ['a'] },
+      { ...base, objects: [], order: [] },
+      { ...base, objects: {}, order: 'nope' },
     ];
     for (const candidate of cases) {
       expect(() => validateScene(candidate)).toThrow(SceneSerializationError);
@@ -145,24 +148,40 @@ describe('serialize: failure modes', () => {
 });
 
 describe('serialize: migrations', () => {
-  const base = {
+  const v1 = {
     format: 'coslate/scene',
     version: 1,
-    viewport: { x: 0, y: 0, scale: 1 },
+    viewport: { x: -120, y: 40, scale: 1.5 },
     objects: {},
     order: [],
   };
 
-  it('walks a document forward through the migration chain', () => {
-    registerMigration(1, (document) => ({ ...document, meta: { migratedFrom: 1 } }));
-    const migrated = migrate({ ...base, version: 1 }, 2);
-    expect(migrated.version).toBe(2);
-    expect(migrated.meta).toEqual({ migratedFrom: 1 });
+  it('drops the camera when reading a v1 document (the built-in 1 → 2 step)', () => {
+    const scene = deserialize(JSON.stringify(v1));
+    expect(scene.version).toBe(2);
+    expect(scene).not.toHaveProperty('viewport');
+    expect(Object.keys(scene)).toEqual(['format', 'version', 'objects', 'order']);
+  });
+
+  it('migrates v1 content and keeps it intact', () => {
+    const object = makeObject({ type: 'shape.rect', id: 'r1', x: 1, y: 2, width: 3, height: 4 });
+    const scene = deserialize(JSON.stringify({ ...v1, objects: { r1: object }, order: ['r1'] }));
+    expect(scene.order).toEqual(['r1']);
+    expect(scene.objects.r1).toEqual(object);
+  });
+
+  it('walks a document forward through a registered chain', () => {
+    // Registered at 2, not 1: overwriting a built-in step would silently change
+    // how every other document in this process is read.
+    registerMigration(2, (document) => ({ ...document, meta: { migratedFrom: 2 } }));
+    const migrated = migrate({ ...v1, version: 2 }, 3);
+    expect(migrated.version).toBe(3);
+    expect(migrated.meta).toEqual({ migratedFrom: 2 });
   });
 
   it('throws UNSUPPORTED_VERSION when a migration step is missing', () => {
     try {
-      migrate({ ...base, version: 7 }, 9);
+      migrate({ ...v1, version: 7 }, 9);
       throw new Error('should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(SceneSerializationError);
@@ -171,6 +190,38 @@ describe('serialize: migrations', () => {
   });
 
   it('leaves a current-version document untouched', () => {
-    expect(deserialize(JSON.stringify(base))).toEqual(createEmptyScene());
+    expect(deserialize(createEmptyScene())).toEqual(createEmptyScene());
+  });
+});
+
+describe('serialize: baselines', () => {
+  it('reports an absent baseline instead of throwing', () => {
+    for (const absent of [null, undefined, '', '   ']) {
+      expect(readBaseline(absent)).toMatchObject({ status: 'empty', reason: 'absent' });
+    }
+  });
+
+  it('reads a baseline this build understands', () => {
+    const scene = sampleScene();
+    const result = readBaseline(serialize(scene));
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') expect(result.scene).toEqual(scene);
+  });
+
+  it('treats an unrecognised stored document as an empty board, and says why', () => {
+    // A tldraw snapshot still sitting in the cache is the concrete case.
+    const tldraw = JSON.stringify({ schema: { schemaVersion: 2 }, store: { 'document:x': {} } });
+    expect(readBaseline(tldraw)).toMatchObject({ status: 'empty', reason: 'UNKNOWN_FORMAT' });
+
+    expect(readBaseline('{ not json')).toMatchObject({ status: 'empty', reason: 'INVALID_JSON' });
+
+    const future = JSON.stringify({ ...createEmptyScene(), version: 99 });
+    expect(readBaseline(future)).toMatchObject({ status: 'empty', reason: 'FUTURE_VERSION' });
+  });
+
+  it('knows when a board is not worth saving', () => {
+    expect(isSceneEmpty(createEmptyScene())).toBe(true);
+    const scene = sampleScene();
+    expect(isSceneEmpty(scene)).toBe(false);
   });
 });

@@ -1,11 +1,16 @@
 /**
- * One shared tooltip layer for the chrome.
+ * One shared tooltip layer for the chrome. (Moved out of the demo unchanged in
+ * behaviour; it is chrome, not application code.)
  *
  * Icons alone are fast to scan but ambiguous the first time, so every control
  * carries a text hint. A single fixed-position node is reused for all of them
  * instead of the native `title` bubble: `title` cannot show a shortcut badge,
  * cannot be styled, and takes about a second to appear — long enough that
  * nobody waits for it.
+ *
+ * The layer lives on the document body rather than inside the toolbar so no
+ * host container can clip it, but it still wears the package root class
+ * (`.coslate-ui`) so the injected stylesheet resolves its theme variables.
  */
 
 export interface TooltipContent {
@@ -21,11 +26,15 @@ export interface TooltipContent {
 export type TooltipSource = TooltipContent | (() => TooltipContent);
 
 export interface TooltipLayer {
+  /** The shared node, so the caller can theme it. */
+  readonly node: HTMLElement;
   /** Attach a hint to a control; also sets its `aria-label`. */
   bind(target: HTMLElement, content: TooltipSource): void;
   /** Re-read every bound label. Call after a locale change. */
   refresh(): void;
   hide(): void;
+  /** Remove the node and every listener. */
+  destroy(): void;
 }
 
 const GAP = 8;
@@ -36,8 +45,10 @@ function describe(content: TooltipContent): string {
 }
 
 export function createTooltipLayer(host: HTMLElement = document.body): TooltipLayer {
-  const node = document.createElement('div');
-  node.className = 'tooltip';
+  const doc = host.ownerDocument;
+  const view = doc.defaultView;
+  const node = doc.createElement('div');
+  node.className = 'tooltip coslate-ui';
   node.setAttribute('role', 'tooltip');
   node.hidden = true;
   host.append(node);
@@ -47,31 +58,32 @@ export function createTooltipLayer(host: HTMLElement = document.body): TooltipLa
     typeof content === 'function' ? content() : content;
 
   function place(target: HTMLElement): void {
+    if (!view) return;
     const anchor = target.getBoundingClientRect();
     const width = node.offsetWidth;
     const height = node.offsetHeight;
     const left = Math.min(
       Math.max(MARGIN, anchor.left + anchor.width / 2 - width / 2),
-      Math.max(MARGIN, window.innerWidth - width - MARGIN),
+      Math.max(MARGIN, view.innerWidth - width - MARGIN),
     );
     // Controls in the toolbar hang their hint off the bar's bottom edge, so a
     // hint never lands on top of the toolbar's second row.
-    const bar = target.closest('.toolbar');
+    const bar = target.closest('.coslate-toolbar');
     const bottom = bar ? bar.getBoundingClientRect().bottom : anchor.bottom;
     // Below the control by default; flip above when it would fall off-screen.
     const below = bottom + GAP;
-    const top = below + height > window.innerHeight - MARGIN ? anchor.top - height - GAP : below;
+    const top = below + height > view.innerHeight - MARGIN ? anchor.top - height - GAP : below;
     node.style.left = `${Math.round(left)}px`;
     node.style.top = `${Math.round(Math.max(MARGIN, top))}px`;
   }
 
   function show(target: HTMLElement, content: TooltipContent): void {
-    const label = document.createElement('span');
+    const label = doc.createElement('span');
     label.className = 'tooltip-label';
     label.textContent = content.label;
     node.replaceChildren(label);
     if (content.hint) {
-      const hint = document.createElement('kbd');
+      const hint = doc.createElement('kbd');
       hint.className = 'tooltip-hint';
       hint.textContent = content.hint;
       node.append(hint);
@@ -84,10 +96,11 @@ export function createTooltipLayer(host: HTMLElement = document.body): TooltipLa
     node.hidden = true;
   }
 
-  window.addEventListener('resize', hide);
-  window.addEventListener('blur', hide);
+  view?.addEventListener('resize', hide);
+  view?.addEventListener('blur', hide);
 
   return {
+    node,
     hide,
     bind(target, content) {
       bindings.push({ target, content });
@@ -101,6 +114,12 @@ export function createTooltipLayer(host: HTMLElement = document.body): TooltipLa
     },
     refresh() {
       for (const binding of bindings) binding.target.setAttribute('aria-label', describe(resolve(binding.content)));
+    },
+    destroy() {
+      view?.removeEventListener('resize', hide);
+      view?.removeEventListener('blur', hide);
+      bindings.length = 0;
+      node.remove();
     },
   };
 }
