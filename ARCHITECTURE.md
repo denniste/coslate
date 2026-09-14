@@ -77,8 +77,7 @@ proves nothing about the document.
 ```ts
 interface Scene {
   format: 'coslate/scene';
-  version: 1;
-  viewport: { x: number; y: number; scale: number };
+  version: 2;
   objects: Record<Id, SceneObject>;
   order: Id[];                 // authoritative paint order
   meta?: Record<string, unknown>;
@@ -100,8 +99,14 @@ world = R(rotation) · S(scaleX, scaleY) · local + (x, y)
 around the object's **top-left corner** — a choice made so the scene contract, the Konva node
 origin and the hit-test math all agree without conversion code.
 
-`viewport` lives inside the document. That makes the camera serializable and testable, and it
-means save/load restores what the user was looking at.
+**The camera is not in the model.** Version 1 kept `viewport` here, and the cost only showed up
+once a scene was shared: a broadcast document carried the publisher's view of it, so one person
+panning dragged every participant's screen, and a saved baseline recorded whichever camera
+happened to be current. The camera is per-user view state — the editor owns it, a host may persist
+it for its own user, and it never appears on the wire or in a baseline. Version 2 dropped the
+field and `serialize.ts` migrates v1 documents by discarding it; there is no migration that could
+put it back, because there is nothing in a document that a reader's camera should be restored
+from.
 
 ---
 
@@ -124,8 +129,10 @@ interface Command {
 The patch engine is ~300 lines in `packages/core/src/jsonpatch.ts` and supports three
 operations — `add`, `replace`, `remove` — over paths such as `/objects/obj_1/x`, plus the
 append token `/order/-`. It is deliberately ours rather than a dependency: this is the spine of
-the product, both undo and (later) remote sync are defined in terms of it, and it must be
-auditable in one sitting.
+the local document, undo is defined in terms of it, and it must be auditable in one sitting.
+
+It is *not* the wire format — see "Records" below for why shipping patches turned out to be a
+defect rather than a shortcut.
 
 Two details that are easy to get wrong and are handled explicitly:
 
@@ -149,8 +156,10 @@ store.transaction((scene, tx) => {
   exactly as it was.
 - Commands stream to subscribers as they are dispatched (tools need immediate feedback) while
   history records a single entry when the outermost transaction closes.
-- `transient: true` marks view-only changes. Camera moves use it, so `Ctrl+Z` undoes *content*,
-  which is what a user means by "undo".
+- `transient: true` marks changes that must never become an undo step or reach the wire. The
+  runtime no longer needs it itself — camera moves stopped being commands when the camera left the
+  document — but it stays supported and tested, because a host that pushes presence or an in-flight
+  preview through the same store needs exactly this.
 
 ### Undo / redo
 
@@ -159,6 +168,31 @@ an entry's commands backwards applying inverses; redo walks them forwards. The b
 cap (200 by default) so a long session cannot grow without limit. `applyRemote()` applies
 commands forward, never records them, and drops the redo branch — keeping a stale redo branch
 alive across an out-of-band change would let redo resurrect state a peer already superseded.
+
+### Records: what actually goes on the wire
+
+Commands are how the *local* document changes. They are a bad network format, and the first
+attempt to ship them proved it: replaying an `add /order/-` op appended the id a second time,
+after which the document failed its own validation and the whole scene became unloadable. A data
+channel reconnects, retries and duplicates messages; a format that is only correct when delivered
+exactly once is not a format.
+
+So the wire carries **object state**, in the `{ added, updated, removed, order }` shape the host
+application already speaks (`records.ts`):
+
+| Property | Why it matters |
+| --- | --- |
+| **Idempotent** | Upserting the same states N times equals upserting them once. `applyDelta` returns the *same scene reference* when nothing changed, so a replay is detectable for free. |
+| **Atomic** | One delta becomes one command → one patch → one assignment. `applyRemote` first builds the whole batch against a working copy and refuses it whole (rolling back) if any op fails. Half a batch is how two peers silently diverge. |
+| **No inverse on the wire** | Commands carry inverses so undo is derived; an inverse in a remote client's hands is a rollback primitive. Records carry none. |
+| **No patch surface** | The receiver builds its own ops from state it validated, so a peer cannot address `/meta`, a path that does not exist, or a field the receiver does not know. |
+| **Last-write-wins** | "The newest state of object X" is a value, and values order by arrival. No conflict policy needed for the substitute-teacher case. |
+| **No echo** | Every change event carries `origin`. A host broadcasts `origin === 'local'` only (`shouldBroadcast`), so a remote batch can never bounce back. |
+
+The outbound half is `recordsFromCommands(scene, commands)`, which reads *patch paths* rather
+than command `type` — `type` is a free-form label a host invents, while the paths are the actual
+contract — and returns only objects and order, so a camera move or a host's private metadata is
+simply never broadcast. The inbound half is `store.applyDelta(delta)`.
 
 ---
 
@@ -195,6 +229,8 @@ store.getState() ──subscribe──▶ SceneRenderer.sync(scene)
 ```ts
 serialize(scene, { pretty? }): string
 deserialize(text | object): Scene      // throws SceneSerializationError
+isSceneEmpty(scene): boolean           // is this worth saving at all?
+readBaseline(text | object): BaselineReadResult   // never throws
 migrate(raw, target?): RawDocument     // the migration hook
 registerMigration(fromVersion, fn)
 ```
@@ -210,10 +246,23 @@ registerMigration(fromVersion, fn)
 | Non-JSON value in the document | `PatchError('TYPE_MISMATCH')` at the offending path |
 
 Validation is strict about structure (ids match keys, `order` is a permutation of `objects`,
-viewport numbers are finite) and permissive about payloads: `data` and `meta` are open bags by
-design, which is the extension hatch that keeps future features from needing a format bump.
-`version` is currently `1`; `migrate()` takes an optional target version so the chain itself is
-testable today, before a second version exists.
+numbers are finite) and permissive about payloads: `data` and `meta` are open bags by design,
+which is the extension hatch that keeps future features from needing a format bump.
+
+**Two readers, on purpose.** `deserialize` is for a file the user chose to open: refusing beats
+eating their drawing, so it throws a typed error and says which part it did not understand.
+`readBaseline` is for a blob the *server* happens to be holding — a cache that may have been
+written by a different engine entirely, with a 24-hour TTL and an 8 MB cap. There, "I cannot
+understand this" has to mean "start from an empty board", because failing to open a room is a
+worse outcome than losing a cache entry. It never throws; it returns `{status: 'empty', reason}`
+so the host can still log or count what it refused. Old third-party snapshots ageing out of the
+cache are the concrete case.
+
+`isSceneEmpty` exists because an empty board should not occupy a baseline at all (R5).
+
+`version` is currently `2`; the v1 → v2 step (drop the camera) is registered in `serialize.ts`
+itself, so any reader gets it without the host wiring anything. `migrate()` takes an optional
+target version so the chain is testable in isolation.
 
 ---
 
@@ -247,6 +296,24 @@ All types share the same transform fields, the same `version`, and the same `met
 - **Wheel semantics**: plain wheel zooms, ctrl/⌘+wheel zooms finely (pinch on a trackpad), and a
   wheel event carrying horizontal travel is treated as a two-finger pan. `preventDefault()` is
   always called so the browser never scrolls or zooms the page over a canvas.
+
+### Read-only is two different things
+
+**A viewer** (audience, anonymous participant) mounts `createSceneViewer` — a renderer, a store,
+and no input path at all. There are no tools, no transformer, no text overlay and no pointer
+handlers, so there is nothing to disable and nothing to forget to disable. It ingests the *same*
+deltas through the *same* `applyDelta` an editor uses, which is why a viewer and an editor
+converge on identical state from identical messages. The camera is the viewer's own, so panning
+and zooming stay live.
+
+**A gated editor** is the harder case, because the product mounts an editor read-only and unlocks
+it when permission arrives — and permission can be revoked while someone is mid-stroke.
+`setReadOnly(true)` therefore aborts the in-flight gesture (including closing an open text
+editor), clears the selection, resets the tool to Select and hides the transformer, then closes
+every mutating entry point — not just the pointer, but `deleteSelection`, `duplicateSelection`,
+`paste`, `setStyle`, `bringToFront`, `sendToBack` and `clearAll`. Hiding a toolbar is not
+read-only; a host that forgets a check must not be able to write. Remote ingestion
+(`applyDelta`) and the camera stay available, because neither is a local edit.
 
 ---
 
@@ -380,7 +447,8 @@ annotations live, which is why it is free-form today.
 
 | | Scope | Status |
 | --- | --- | --- |
-| **v1** | Scene model, command protocol + JSON Patch, transactions, bounded undo/redo, viewport math, serialization with migrations, Konva renderer, six object types, eight tools, style system, locale primitives, PNG/JSON export, demo app, unit + Playwright suites | **shipped** |
+| **v0.1** | Scene model, command protocol + JSON Patch, transactions, bounded undo/redo, viewport math, serialization with migrations, Konva renderer, six object types, eight tools, style system, locale primitives, PNG/JSON export, demo app, unit + Playwright suites | **shipped** |
+| **v0.2 — host-ready** | Camera out of the document (v2 + migration), object-state records with idempotent and atomic remote apply, read-only projection (`createSceneViewer`) and editor read-only gating, undoable `clearAll`, baseline semantics (`isSceneEmpty` / `readBaseline`), `@coslate/ui` with theme + host-injected strings + hide-all-chrome, `getSummary()` status push-back | **shipped** |
 | **v1.1** | Grouping (`parentId` is already reserved), lock/hide UI, copy/paste across documents, image object, alignment guides, snap-to-grid, multi-page documents, `store.beginTransaction()` for long-lived gestures | planned |
 | **v2** | Object Plugin registry, domain packs, optional sync package built on the command protocol, AI client as a first-class command producer, alternative (SVG/headless) renderers | planned |
 
@@ -392,7 +460,8 @@ annotations live, which is why it is free-form today.
 | --- | --- | --- |
 | `@coslate/core` | nothing at runtime | use the DOM, import a renderer, hold editor state, ship a user-visible string |
 | `@coslate/konva` | `@coslate/core`, `konva` | own the document, mutate the scene directly, leak Konva types into the public scene API, ship user-visible copy |
-| `apps/demo` | both packages | contain whiteboard logic that belongs in a package |
+| `@coslate/ui` | `@coslate/core`, `@coslate/konva` | own the document or hold authoritative state, ship user-visible copy, require a host CSS pipeline |
+| `apps/demo` | all three packages | contain whiteboard logic that belongs in a package |
 
 `packages/konva` consumes `@coslate/core` through its built `dist` output via a TypeScript
 project reference, so the boundary is enforced by the compiler: a stray deep import from
@@ -410,7 +479,8 @@ another package fails `pnpm typecheck`.
 | Serialization | vitest | round-trip equality, typed failures including future versions |
 | Geometry | vitest | hit testing, marquee selection, point normalisation, content bounds |
 | Locale | vitest | RFC 4647 lookup, truncation, likely-subtag resolution (`zh` vs `zh-TW`), plural category per locale, per-key fallback, direction incl. script overrides, switching + subscribers |
-| Product | Playwright + real Chromium | tools produce the right *scene state*, zoom changes the rendered canvas, export produces real files, locale switching translates the chrome and mirrors RTL |
+| Records | vitest | replay idempotency (including a re-parsed frame), atomic batch refusal, echo guard, undo reach, delta↔command round trip |
+| Product | Playwright + real Chromium | tools produce the right *scene state*, zoom changes the rendered canvas, export produces real files, locale switching translates the chrome and mirrors RTL, read-only refuses every mutation, replays converge, mini chrome leaves the canvas |
 
 The e2e suite asserts against `window.__scene` — the live document — rather than DOM text, so a
 green run means the model, the command pipeline, the renderer and the tools agree.

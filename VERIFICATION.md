@@ -1,5 +1,11 @@
 # Verification record
 
+> **This file is a log, newest first.** The current state of the project is the
+> [v0.2 host-readiness run](#1-v02--host-readiness-2026-09-15-current) right below: **128 unit tests,
+> 24/24 end-to-end assertions, both demo pages building**. Everything after it is kept as history —
+> §2 is the i18n-era run (20/20) and the staging sections that follow it are the original v0.1
+> record (16/16). Where any of them disagree with the newest, the newest wins.
+
 Everything below was executed in this directory on the staging machine. Raw output for the
 end-to-end run is in `.artifacts/e2e-report.json`; screenshots are in `.artifacts/`.
 
@@ -9,7 +15,76 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ---
 
-## 0. Re-verification — 2026-09-14
+## 1. v0.2 — host-readiness (2026-09-15, current)
+
+Requirement source: CoStage's `docs/COSLATE-REPLACEMENT-REQUIREMENTS.md` (R1–R10, C1–C8, D1–D4).
+Requirement-by-requirement mapping: [`docs/requirements-mapping.md`](./docs/requirements-mapping.md).
+
+| Step | Result |
+| --- | --- |
+| `pnpm typecheck` | PASS — 5 TypeScript projects (core, konva, ui, demo, tests), zero errors |
+| `pnpm test` | PASS — **128/128 in 7 files** (records 25, i18n 25, store 24, serialize 19, viewport 14, geometry 12, jsonpatch 9) |
+| `pnpm build` | PASS — two entries: see the payload table below |
+| `pnpm e2e` | PASS — **24/24 assertions**, zero page errors |
+
+Final run for this record: `24/24 assertions passed` with `pageErrors = []`
+(`.artifacts/e2e-report.json`), from a clean tree after the `@coslate/ui` extraction.
+
+**Defects this round was written to remove** (each found by review or by a test, not by a user):
+
+1. **Patch replay corrupted the document.** Re-sending `add /order/-` appended the id a second
+   time; `validateScene` then rejected the entire scene, so a reconnecting peer could make a board
+   unloadable. A data channel duplicates messages as a matter of course. Fixed by transporting
+   object state (R4/D1) — replaying the same delta is now a no-op *by content*, because a
+   retransmitted frame has been through `JSON.parse` and is a different instance holding the same
+   state, which a reference check would miss.
+2. **Remote batches were not atomic.** A batch whose third command failed still applied the first
+   two, which is silent divergence. `applyRemote` now builds the whole batch against a working
+   copy and refuses it whole, rolling back.
+3. **The echo guard suppressed local undo.** `shouldBroadcast` originally allowed only
+   `origin === 'local'`, which would have stopped an undo from ever reaching the room. Undo and
+   redo are local edits; the only origin that must not be broadcast is `remote`. What stops an
+   undo from eating a peer's work is that remote commands never enter the local history.
+4. **The camera travelled with the document.** One participant panning dragged every other
+   participant's screen, and a baseline recorded whoever's camera was current. `Scene` is now v2
+   with the camera owned by the editor, and a registered v1 → v2 migration drops the field.
+5. **Read-only existed only as wishful thinking.** The editor now aborts an in-flight gesture when
+   permission is revoked and closes every mutating entry point — not just the pointer, but
+   `deleteSelection`, `duplicateSelection`, `paste`, `setStyle`, `bringToFront`, `sendToBack` and
+   `clearAll`. The audience path (`createSceneViewer`) has no input handlers at all, so there is
+   nothing to disable and nothing a later change can forget to disable.
+
+The demo build is code-split into two pages, so the honest number is per page (gzipped, measured
+with `gzip -c`):
+
+| Page | JS | CSS | Total gzipped |
+| --- | --- | --- | --- |
+| `dist/index.html` — the editor | `main` 77 024 B → 23 663 B, `renderer` 216 897 B → 65 103 B | 577 B → 368 B | **89.1 kB** |
+| `dist/viewer.html` — read-only | `viewer` 1 358 B → 729 B, `renderer` 216 897 B → 65 103 B | 577 B → 368 B | **66.2 kB** |
+
+The editor page grew from 82.8 kB gzipped (v0.1) to 89.1 kB: object-state records, the read-only
+gating and viewer, and the `@coslate/ui` package, whose stylesheet is injected from JavaScript
+rather than emitted as a separate asset (which gzips slightly worse than a standalone CSS file, and
+is the price of a host needing no CSS pipeline). The read-only page is 23 kB *lighter* than the
+editor — that is the chrome, and an audience does not download it.
+
+**What the e2e suite proves for these requirements** (real Chromium, real input events):
+
+| Check | Assertion |
+| --- | --- |
+| `h` | a saved document is version 2 and carries **no** `viewport` field |
+| `u` | read-only: a stroke interrupted by a permission change never lands; the tool resets to Select; `setStyle` / `deleteSelection` / `duplicateSelection` / `clearAll` all refuse; remote records are still accepted; zoom **and drag-to-pan** still work |
+| `v` | five replays of the same delta leave one order entry and no history; the document still round-trips through save/load; a remote update never makes `canUndo` true; garbage deltas change nothing |
+| `w` | `getSummary()` tracks the document and its byte count equals the real *compact* serialized size; `clearAll()` wipes the board and one undo restores all of it; the chrome publishes `--coslate-z-chrome` / `--coslate-z-tooltip`; `setChromeVisible(false)` removes the toolbar **and** the status bar, leaves no focusable control, and hands the reclaimed height (130px at 1280×820) to the canvas |
+| `x` | the viewer page renders a stream, ignores a replay, mounts no editor and exposes no editable control |
+
+---
+
+## 2. Re-verification — 2026-09-14 (i18n era, superseded)
+
+> Historical: this run predates v0.2 below. It recorded 97 unit tests and 20 e2e assertions; the
+> v0.2 run has 128 and 24. Kept because it is the evidence for the icon toolbar, the narrow-viewport
+> work and the locale mechanism.
 
 Re-run end to end from a clean working tree (`git status` empty) to confirm the published
 verification still holds. Everything below was executed again; **all of it passed**.
@@ -190,15 +265,16 @@ the text tool reads the placeholder out of the live `<textarea>` and requires `�
 the localized copy reaches the runtime rather than sitting in a constant. Screenshot:
 `.artifacts/t-zh-hant.png`.
 
----
+## 3. Original staging record — the v0.1 run (superseded)
 
-> ### Original staging record — superseded by §0 above
+> The first verification run, kept as history: 72 unit tests and 16 e2e assertions against
+> the code as it stood at 0.1.0. Superseded by §1 in every respect.
 >
 > The sections below are the *first* verification run, kept as history: they record 72 unit
 > tests and 16 e2e assertions against the code as it stood then. The current numbers are in §0.
 > Where they disagree, §0 wins.
 
-## 1. `pnpm install`
+### 3.1 `pnpm install`
 
 ```
 devDependencies:
@@ -222,7 +298,7 @@ Package runtime dependencies:
 Root devDependencies: `typescript`, `vite`, `vitest`, `@types/node`, plus the two workspace
 packages linked for the root-level test project. Total installed packages: 48.
 
-## 2. `pnpm typecheck` — PASS
+### 3.2 `pnpm typecheck` — PASS
 
 `tsc -b` over four TypeScript projects (`packages/core`, `packages/konva`, `apps/demo`,
 `tsconfig.tests.json`) with `strict: true`, `noImplicitAny`, `noUnusedLocals`,
@@ -230,7 +306,7 @@ packages linked for the root-level test project. Total installed packages: 48.
 Zero errors. No `any` anywhere in `packages/*/src` or `apps/demo/src`
 (`grep -rn ": any\|<any>\|as any\|any\[\]"` → no matches).
 
-## 3. `pnpm test` — PASS, 72 tests in 5 files
+### 3.3 `pnpm test` — PASS, 72 tests in 5 files
 
 Required coverage, and where it lives:
 
@@ -252,7 +328,7 @@ Two real bugs were found by these tests during development and fixed:
    blurred the freshly focused `<textarea>`, which committed an empty string and tore the
    overlay down. Fixed by suppressing the default on the canvas host.
 
-## 4. `pnpm build` — PASS
+### 3.4 `pnpm build` — PASS
 
 ```
 dist/index.html                   1.16 kB │ gzip:  0.64 kB
@@ -265,7 +341,7 @@ dist/assets/index-VUK4OKk7.js   255.04 kB │ gzip: 76.26 kB
 `@coslate/konva` through their built `dist` output, so the build exercises the real package
 artifacts.
 
-## 5. `pnpm e2e` — PASS, 16/16 assertions
+### 3.5 `pnpm e2e` — PASS, 16/16 assertions
 
 Real Chromium, real input events, against `vite preview` on port 4321, with `TMPDIR=/dev/shm`.
 Every assertion reads `window.__scene` (the live scene document), not DOM text.
@@ -289,7 +365,7 @@ Every assertion reads `window.__scene` (the live scene document), not DOM text.
 | o | autosave survives a reload | PASS — 8 objects restored from `localStorage` |
 | p | load JSON from a file replaces the scene | PASS — history reset |
 
-## 6. `scripts/rename.sh`
+### 3.6 `scripts/rename.sh`
 
 Tested on a full copy of the tree (`.rename-test`, since removed):
 
@@ -316,7 +392,7 @@ stage is itself a git root, so the script never reaches into a parent repository
 `node_modules`, `dist`, `.git`, `.pnpm-store`, `.artifacts` and `.tsbuild` are never touched, and
 `scripts/rename.sh` deliberately skips itself so it stays re-runnable.
 
-## 7. `pnpm dev`
+### 3.7 `pnpm dev`
 
 ```
 Port 5173 is in use, trying another one...   (occupied by another project on this machine)
@@ -329,7 +405,7 @@ Serves the demo (`<title>CoSlate — demo whiteboard</title>`) and resolves `@co
 
 ---
 
-## Known limitations
+### 3.8 Known limitations
 
 - `viewport` is part of the document, so a camera change is a (transient, non-undoable) command.
   Remote peers would receive camera moves; there is no per-user camera yet.

@@ -16,7 +16,8 @@ CoSlate was written to replace a third-party whiteboard engine inside **CoStage*
 self-hosted live-classroom product. That engine is not open source, and it was the single
 largest asset in the app (a ~7.2 MB ESM bundle). CoSlate keeps the scene model — not the
 renderer — as the source of truth, so the whole runtime plus renderer plus UI chrome ships
-as a **83 kB gzipped** bundle in the demo build.
+as a **89 kB gzipped** editor page (and **66 kB** for the read-only viewer page, which loads the
+renderer but no chrome) in the demo build.
 
 The CoStage integration is in progress; the runtime here stands on its own.
 
@@ -46,8 +47,12 @@ Node 20+ and pnpm 9+.
 
 ```ts
 import { WhiteboardEditor } from '@coslate/konva';
+import { createChrome } from '@coslate/ui';
 
 const editor = new WhiteboardEditor({ container: document.querySelector('#board')! });
+// Optional: the chrome is a separate package, and a host that has its own UI
+// simply never imports it.
+const chrome = createChrome({ toolbar, statusbar, editor, i18n });
 
 editor.setTool('pen');
 editor.setStyle({ stroke: '#4dabf7', strokeWidth: 4 });
@@ -69,6 +74,34 @@ editor.store.transaction((_scene, tx) => {
   editor.store.dispatch(tx.commit('object.create', addObjectOps(note)));
   editor.store.dispatch(tx.commit('object.move', updateObjectOps(note.id, { x: 100 })));
 }, { label: 'Add note' });   // <- one Ctrl+Z undoes both commands
+```
+
+### Sharing it
+
+The wire carries **object state**, never patches — so a reconnecting channel, a retransmitted
+frame or a duplicated message cannot corrupt the document:
+
+```ts
+import { recordsFromCommands, shouldBroadcast } from '@coslate/core';
+import { createSceneViewer } from '@coslate/konva';
+
+// Send: derive what to broadcast from a local change.
+editor.store.subscribe((event) => {
+  if (!shouldBroadcast(event)) return;              // remote batches never echo
+  const delta = recordsFromCommands(event.scene, event.commands);
+  if (delta) channel.send(delta);                   // { added, updated, removed, order }
+});
+
+// Receive (editor): idempotent, atomic, and never in the undo history.
+store.applyDelta(delta);
+
+// Receive (audience): no editor, no input handlers, nothing to disable.
+const viewer = createSceneViewer({ container: document.querySelector('#stage')! });
+viewer.applyDelta(delta);
+
+// Permission can arrive — or be revoked — at any moment.
+editor.setReadOnly(true);                           // aborts any in-flight gesture
+editor.setReadOnly(canPublishData());
 ```
 
 ### Localizing it
@@ -104,9 +137,12 @@ then to the key itself, so nothing is ever silently blank.
 ## What v1 does
 
 **Scene**
-- `Scene { format, version, viewport, objects, order }` — plain JSON, immutable updates, structural sharing.
+- `Scene { format, version, objects, order }` — plain JSON, immutable updates, structural sharing.
 - Object types: `shape.rect`, `shape.ellipse`, `shape.line`, `shape.arrow`, `shape.text`, `freehand.stroke`.
 - Free-form `data` and `meta` bags so new features never need a format bump.
+- **No camera in the document.** View state is per user, so a shared scene cannot drag everyone to
+  the publisher's pan position and a saved baseline cannot record somebody else's view. v1 files
+  are migrated by dropping the field.
 
 **Commands and history**
 - Minimal built-in JSON Patch (`add` / `replace` / `remove`, RFC 6901 pointers) — no dependency.
@@ -114,11 +150,33 @@ then to the key itself, so nothing is ever silently blank.
 - `store.transaction(fn, { label })` groups commands into one atomic undo step; nested
   transactions flatten into the outermost; a throwing transaction rolls itself back.
 - Bounded history (200 steps by default), redo branch dropped on new edits, `transient`
-  commands (camera moves) excluded from undo.
+  commands excluded from undo.
+- `clearAll()` wipes the board as one undoable step — clearing a room must not be the moment the
+  undo history disappears.
+
+**Sharing a scene**
+- The wire carries **object state**, not patches: `{ added, updated, removed, order }`.
+- Idempotent (a retransmitted frame is a no-op, compared by content, not by reference), atomic
+  (a rejected batch changes nothing), and free of inverses and arbitrary patch paths.
+- `recordsFromCommands` derives what to send from a local change; `shouldBroadcast` excludes
+  remote batches so nothing echoes, while a local undo still reaches the room.
+- `createSceneViewer` is the read-only projection: a renderer and a store with no input handlers,
+  fed by the same deltas an editor uses.
+
+**Read-only**
+- `editor.setReadOnly(true)` is safe at any moment, including mid-stroke: it aborts the gesture,
+  closes the text editor, resets the tool and closes every mutating entry point.
+- The camera stays live — panning and zooming are the viewer's own view state.
+
+**Baselines**
+- `isSceneEmpty()` so a blank board never occupies a baseline slot.
+- `readBaseline()` never throws: an unrecognised or foreign stored document becomes an empty
+  board, with the reason code returned so it can still be logged.
 
 **Camera**
 - Pure math: `worldToScreen`, `screenToWorld`, `zoomAt` (cursor-pinned), `panBy`, `fitToContent`.
 - Zoom via toolbar, wheel, ctrl+wheel; pan via space+drag, middle-drag, two-finger wheel.
+- Owned by the editor, not the scene — the same math drives an editor and a read-only viewer.
 
 **Renderer (`@coslate/konva`)**
 - One-way scene → Konva reconciliation keyed by object id; three layers: grid, content, overlay.
@@ -141,9 +199,11 @@ then to the key itself, so nothing is ever silently blank.
   fallback locale and then to the key itself, so nothing is ever silently blank.
 
 **Demo app**
-- Dark chrome: a tldraw-shaped icon toolbar in labelled groups (tools, history, zoom, selection,
-  file, language, style) plus a canvas and a status bar. Every control is icon-only and explains
-  itself on hover — label and keyboard shortcut in one hint.
+- Chrome comes from `@coslate/ui`: a tldraw-shaped icon toolbar in labelled groups (tools, history,
+  zoom, selection, file, language, style) plus a status bar. Every control is icon-only and
+  explains itself on hover — label and keyboard shortcut in one hint.
+- The same page shows the read-only path: `viewer.html` mounts `createSceneViewer` with no editor
+  and no controls, and takes the same deltas an editor does.
 - Responsive chrome: grouped pills while they fit, then a dense wrapped flow below 560px and
   compact controls below 400px. Nothing is ever hidden — every control stays reachable down to
   320px wide.
@@ -153,7 +213,9 @@ then to the key itself, so nothing is ever silently blank.
   writing direction.
 - Keyboard shortcuts (`v p e r o l a t`, `Ctrl+Z`, `Ctrl+Shift+Z`/`Ctrl+Y`, `Ctrl+C/V`, `Ctrl+D`,
   `Delete`, `Ctrl+0`, `Ctrl+Shift+F`, `Ctrl+S`).
-- Autosave to `localStorage` with restore-on-load and a clear that resets it.
+- Autosave to `localStorage` with restore-on-load. The camera is stored under its own key,
+  because it is view state and not part of the document.
+- Clearing the board is undoable (one step), so a mis-click is not a lost lesson.
 - Export PNG (clean full-content snapshot, no selection UI), save/load JSON.
 - `window.__scene` and `window.__i18n` debug/test hooks — documented, stable, and used by the e2e
   suite.
@@ -168,12 +230,13 @@ See `ARCHITECTURE.md` for the growth path these are deferred into.
 ## Repository layout
 
 ```
-packages/core/    @coslate/core   — scene model, commands, undo, viewport, serialization (zero deps)
-packages/konva/   @coslate/konva  — Konva renderer, tools, editor shell (dep: konva)
-apps/demo/        vanilla TypeScript + Vite demo whiteboard
+packages/core/    @coslate/core   — scene model, commands, records, undo, i18n, serialization (zero deps)
+packages/konva/   @coslate/konva  — Konva renderer, editor, read-only viewer (dep: konva)
+packages/ui/      @coslate/ui     — embeddable chrome: toolbar, style, zoom, theme, status bar
+apps/demo/        vanilla TypeScript + Vite demo: the editor page and the viewer page
 tests/unit/       vitest — model-level tests
 tests/e2e/        Playwright — real browser, real scene assertions
-docs/             scope and origin, plus the analyses that shaped the runtime
+docs/             scope and origin, the analyses, and the requirements → implementation map
 scripts/rename.sh utility: `bash scripts/rename.sh <new-name> [--display <Name>]`
 ```
 
