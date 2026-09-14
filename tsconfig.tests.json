@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": ".",
+    "outDir": ".tsbuild/tests",
+    "emitDeclarationOnly": true,
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "noEmit": false
+  },
+  "include": ["tests/unit/**/*.ts", "vitest.config.ts", "packages/konva/src/geometry.ts"],
+  "references": [{ "path": "packages/core" }, { "path": "packages/konva" }]
+}

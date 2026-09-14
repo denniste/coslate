@@ -1,0 +1,19 @@
+{
+  "name": "@coslate/demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CoSlate demo whiteboard: vanilla TypeScript + Vite shell around @coslate/core and @coslate/konva.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --port 4321 --strictPort",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@coslate/core": "workspace:*",
+    "@coslate/konva": "workspace:*",
+    "konva": "^9.3.16"
+  }
+}

@@ -1,0 +1,12 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# Keep the content-addressable store inside the staging tree so this repo never
+# writes outside its own directory.
+storeDir: .pnpm-store
+
+# esbuild ships a platform binary and needs its install script; everything else
+# stays blocked (pnpm's secure default).
+allowBuilds:
+  esbuild: true

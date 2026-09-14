@@ -1,0 +1,8 @@
+# CoSlate is MIT-licensed. Sponsorship pays for maintenance; it never gates a feature.
+#
+# Only list platforms that actually resolve — a funding button that 404s is worse than no
+# button at all. Uncomment and fill these in as the accounts are opened:
+#
+#   custom: ['https://afdian.com/a/<handle>']   # 爱发电
+#   open_collective: <collective>
+github: [denniste]

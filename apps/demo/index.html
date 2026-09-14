@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>CoSlate — demo whiteboard</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314161a'/%3E%3Cpath d='M9 22c4-1 6-4 7-9 1 5 3 8 7 9' stroke='%234dabf7' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <meta
+      name="description"
+      content="CoSlate demo: an open interactive scene runtime — the whiteboard core, not the whole product."
+    />
+  </head>
+  <body>
+    <div id="app">
+      <header id="toolbar" class="toolbar" role="toolbar" aria-label="Whiteboard tools"></header>
+      <main id="canvas-host" class="canvas-host" aria-label="Whiteboard canvas"></main>
+      <footer id="statusbar" class="statusbar"></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

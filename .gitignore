@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.artifacts/
+*.log
+.DS_Store
+.vite/
+*.tsbuildinfo
+# Stage-local package store (pnpm) and TypeScript build cache: neither belongs in git.
+.pnpm-store/
+.tsbuild/

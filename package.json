@@ -1,0 +1,30 @@
+{
+  "name": "coslate-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CoSlate \u2014 an open interactive scene runtime (whiteboard core, not the whole product).",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @coslate/core build && pnpm --filter @coslate/konva build && pnpm --filter @coslate/demo dev",
+    "build": "tsc -b packages/core packages/konva && pnpm --filter @coslate/demo build",
+    "preview": "pnpm --filter @coslate/demo preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b",
+    "e2e": "node tests/e2e/whiteboard.spec.mjs",
+    "rename": "bash scripts/rename.sh"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8",
+    "@types/node": "^22.10.1",
+    "@coslate/core": "workspace:*",
+    "@coslate/konva": "workspace:*"
+  }
+}
