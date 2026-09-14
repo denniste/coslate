@@ -4,7 +4,7 @@ Everything below was executed in this directory on the staging machine. Raw outp
 end-to-end run is in `.artifacts/e2e-report.json`; screenshots are in `.artifacts/`.
 
 Environment: Node v24.14.1, pnpm 12.3.4, Chromium 1228 (preinstalled),
-`http_proxy=http://127.0.0.1:7890`, `npm_config_cache=/root/CoStage/.tmp/npmcache`,
+`http_proxy=http://127.0.0.1:7890`, `npm_config_cache=<npm cache dir>`,
 stage-local pnpm store at `.pnpm-store/`.
 
 ---
