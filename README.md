@@ -173,6 +173,7 @@ packages/konva/   @coslate/konva  — Konva renderer, tools, editor shell (dep: 
 apps/demo/        vanilla TypeScript + Vite demo whiteboard
 tests/unit/       vitest — model-level tests
 tests/e2e/        Playwright — real browser, real scene assertions
+docs/             scope and origin, plus the analyses that shaped the runtime
 scripts/rename.sh utility: `bash scripts/rename.sh <new-name> [--display <Name>]`
 ```
 
