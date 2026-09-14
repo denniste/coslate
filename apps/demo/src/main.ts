@@ -3,15 +3,16 @@ import { serialize } from '@coslate/core';
 import { WhiteboardEditor } from '@coslate/konva';
 import { createChrome } from './chrome.js';
 import { installTestHook } from './hooks.js';
+import { installI18n } from './i18n/index.js';
 import { installShortcuts } from './shortcuts.js';
 
 /**
  * Demo application shell.
  *
  * Everything whiteboard-shaped lives in `@coslate/konva`; this file only wires
- * the chrome, autosave and keyboard shortcuts. If you are embedding CoSlate in
- * your own product, this is the file to read first — it is the smallest complete
- * integration.
+ * the chrome, autosave, locale and keyboard shortcuts. If you are embedding
+ * CoSlate in your own product, this is the file to read first — it is the
+ * smallest complete integration.
  */
 
 const STORAGE_KEY = 'coslate:scene:v1';
@@ -25,23 +26,33 @@ if (!toolbar || !canvasHost || !statusbar) {
   throw new Error('CoSlate demo: expected #toolbar, #canvas-host and #statusbar in the document');
 }
 
+// Locale first: the chrome is built from translated labels, and this also sets
+// `<html lang>`/`dir` before anything is measured or painted.
+const i18n = installI18n();
+
 const editor = new WhiteboardEditor({
   container: canvasHost,
   background: '#14161a',
+  // The runtime ships no copy, so the text tool's copy comes from here — read
+  // lazily, so it is already in the right language when the tool opens.
+  textPlaceholder: () => i18n.t('text.placeholder'),
+  textAriaLabel: () => i18n.t('text.ariaLabel'),
 });
 
-const chrome = createChrome(toolbar, statusbar, editor);
+const chrome = createChrome({ toolbar, statusbar, editor, i18n });
 
 // ------------------------------------------------------------------ autosave
 
 let autosaveTimer: number | null = null;
 
+const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
 function saveNow(): void {
   try {
     localStorage.setItem(STORAGE_KEY, serialize(editor.getScene()));
-    chrome.setStatus('saved');
+    chrome.setStatus('status.saved');
   } catch (error) {
-    chrome.setStatus(`autosave failed: ${error instanceof Error ? error.message : String(error)}`);
+    chrome.setStatus('status.autosaveFailed', { error: describe(error) });
   }
 }
 
@@ -63,15 +74,15 @@ function restore(): void {
     raw = null;
   }
   if (!raw) {
-    chrome.setStatus('new scene');
+    chrome.setStatus('status.newScene');
     return;
   }
   try {
     const scene = editor.loadJSON(raw);
-    chrome.setStatus(`restored ${scene.order.length} object(s)`);
+    chrome.setStatus('status.restored', { count: scene.order.length });
   } catch (error) {
     // A corrupt autosave must never block the editor from opening.
-    chrome.setStatus(`restore failed: ${error instanceof Error ? error.message : String(error)}`);
+    chrome.setStatus('status.restoreFailed', { error: describe(error) });
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -88,9 +99,9 @@ editor.on('change', scheduleAutosave);
 installShortcuts(editor, {
   onSaveJson: () => {
     editor.downloadJSON('coslate.scene.json');
-    chrome.setStatus('downloaded coslate.scene.json');
+    chrome.setStatus('status.downloaded', { file: 'coslate.scene.json' });
   },
-  onStatus: (text) => chrome.setStatus(text),
+  setStatus: (key, params) => chrome.setStatus(key, params),
 });
 
 // "Clear" also has to reset the autosave, or the next reload resurrects the scene.
@@ -100,7 +111,7 @@ toolbar.querySelector('[data-testid="clear"]')?.addEventListener('click', () => 
   } catch {
     /* ignore */
   }
-  chrome.setStatus('cleared');
+  chrome.setStatus('status.cleared');
 });
 
 // ------------------------------------------------------------- test/debug hook
@@ -108,6 +119,7 @@ toolbar.querySelector('[data-testid="clear"]')?.addEventListener('click', () => 
 installTestHook(editor);
 
 // Expose the editor for hosts that want to script it from the console.
+// `window.__i18n` is installed by `installI18n`.
 declare global {
   interface Window {
     coslateDemo?: { editor: WhiteboardEditor; saveNow: () => void };

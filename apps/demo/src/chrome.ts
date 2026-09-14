@@ -1,39 +1,56 @@
-import {
-  STROKE_PALETTE,
-  STROKE_WIDTHS,
-  TOOL_NAMES,
-  type ToolName,
-  type WhiteboardEditor,
-} from '@coslate/konva';
+import { STROKE_PALETTE, STROKE_WIDTHS, TOOL_NAMES, type ToolName, type WhiteboardEditor } from '@coslate/konva';
+import type { MessageParams } from '@coslate/core';
+import { icon, type IconName } from './icons.js';
+import type { DemoI18n } from './i18n/index.js';
+import type { MessageKey } from './i18n/catalog-en.js';
+import { createTooltipLayer } from './tooltip.js';
 
 /**
- * The demo chrome: a toolbar and a status bar.
+ * The demo chrome: an icon toolbar with hover hints, and a status bar.
+ *
+ * tldraw-shaped on purpose — grouped, icon-only controls that read at a glance,
+ * with the text hint on hover instead of a permanent label. The hint carries the
+ * keyboard shortcut too, which is the only place the two bindings are stated
+ * together.
+ *
+ * Everything visible here goes through `i18n.t()`. Nothing is pre-translated into
+ * component state — the status line keeps a *key plus params* — so switching
+ * language re-renders the whole chrome, including the last message it showed,
+ * without rebuilding a single control.
  *
  * Deliberately plain DOM. The point of the demo is to prove the runtime works in
  * a browser, not to be a UI framework — every control here is a thin call into
  * `WhiteboardEditor`, which is the API a real product would also use.
  */
 
-const TOOL_LABELS: Record<ToolName, { label: string; title: string }> = {
-  select: { label: 'Select', title: 'Select — click, shift-click, drag a marquee (V)' },
-  pen: { label: 'Pen', title: 'Freehand pen (P)' },
-  eraser: { label: 'Erase', title: 'Eraser — click or drag over objects (E)' },
-  rect: { label: 'Rect', title: 'Rectangle (R)' },
-  ellipse: { label: 'Ellipse', title: 'Ellipse (O)' },
-  line: { label: 'Line', title: 'Line (L)' },
-  arrow: { label: 'Arrow', title: 'Arrow (A)' },
-  text: { label: 'Text', title: 'Text — click to place, Enter to commit (T)' },
+const TOOL_META: Record<ToolName, { key: MessageKey; hint: string; icon: IconName }> = {
+  select: { key: 'tool.select.label', hint: 'V', icon: 'select' },
+  pen: { key: 'tool.pen.label', hint: 'P', icon: 'pen' },
+  eraser: { key: 'tool.eraser.label', hint: 'E', icon: 'eraser' },
+  rect: { key: 'tool.rect.label', hint: 'R', icon: 'rect' },
+  ellipse: { key: 'tool.ellipse.label', hint: 'O', icon: 'ellipse' },
+  line: { key: 'tool.line.label', hint: 'L', icon: 'line' },
+  arrow: { key: 'tool.arrow.label', hint: 'A', icon: 'arrow' },
+  text: { key: 'tool.text.label', hint: 'T', icon: 'text' },
 };
 
-const FILL_OPTIONS: { value: string | null; label: string }[] = [
-  { value: null, label: 'No fill' },
-  { value: '#ffffff', label: 'White fill' },
-  { value: '#1c2129', label: 'Panel fill' },
+const FILL_OPTIONS: { value: string | null; key: MessageKey }[] = [
+  { value: null, key: 'style.fill.none' },
+  { value: '#ffffff', key: 'style.fill.white' },
+  { value: '#1c2129', key: 'style.fill.panel' },
 ];
 
 export interface Chrome {
   sync(): void;
-  setStatus(text: string): void;
+  /** Set the status message by *key*, so it re-renders on a locale change. */
+  setStatus(key: MessageKey, params?: MessageParams): void;
+}
+
+export interface ChromeOptions {
+  toolbar: HTMLElement;
+  statusbar: HTMLElement;
+  editor: WhiteboardEditor;
+  i18n: DemoI18n;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -50,53 +67,135 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function button(label: string, title: string, testId: string, onClick: () => void): HTMLButtonElement {
-  const node = el('button', { type: 'button', title, 'data-testid': testId });
-  node.textContent = label;
-  node.addEventListener('click', onClick);
-  return node;
+interface IconButtonOptions {
+  testId: string;
+  icon: IconName;
+  /** Read lazily, so a locale change needs no re-binding. */
+  label: () => string;
+  hint?: string;
+  /** Renders as a toggle and participates in `aria-pressed` sync. */
+  toggle?: boolean;
+  onClick: () => void;
 }
 
-function separator(): HTMLElement {
-  return el('span', { class: 'sep' });
-}
-
-export function createChrome(toolbar: HTMLElement, statusbar: HTMLElement, editor: WhiteboardEditor): Chrome {
+export function createChrome(options: ChromeOptions): Chrome {
+  const { toolbar, statusbar, editor, i18n } = options;
+  const t = i18n.t;
+  const tooltip = createTooltipLayer();
   const toolButtons = new Map<ToolName, HTMLButtonElement>();
   const strokeButtons = new Map<string, HTMLButtonElement>();
   const fillButtons = new Map<string, HTMLButtonElement>();
   const widthButtons = new Map<number, HTMLButtonElement>();
 
-  // --- tools ---------------------------------------------------------------
-  const toolRow = el('div', { class: 'toolbar-row' });
-  for (const name of TOOL_NAMES) {
-    const meta = TOOL_LABELS[name];
-    const node = button(meta.label, meta.title, `tool-${name}`, () => editor.setTool(name));
-    node.setAttribute('aria-pressed', 'false');
-    toolButtons.set(name, node);
-    toolRow.append(node);
+  function iconButton(button: IconButtonOptions): HTMLButtonElement {
+    const node = el('button', { type: 'button', class: 'icon-button', 'data-testid': button.testId });
+    node.append(icon(button.icon));
+    if (button.toggle) node.setAttribute('aria-pressed', 'false');
+    node.addEventListener('click', button.onClick);
+    tooltip.bind(node, () => (button.hint ? { label: button.label(), hint: button.hint } : { label: button.label() }));
+    return node;
   }
 
+  function group(labelKey: MessageKey, ...children: (Node | string)[]): HTMLElement {
+    const node = el('div', { class: 'toolbar-group', role: 'group' });
+    node.dataset.labelKey = labelKey;
+    node.setAttribute('aria-label', t(labelKey));
+    node.append(...children);
+    return node;
+  }
+
+  function separator(): HTMLElement {
+    return el('span', { class: 'sep' });
+  }
+
+  // --- tools ---------------------------------------------------------------
+  const toolButtonsRow: (Node | string)[] = [];
+  for (const name of TOOL_NAMES) {
+    const meta = TOOL_META[name];
+    const node = iconButton({
+      testId: `tool-${name}`,
+      icon: meta.icon,
+      label: () => t(meta.key),
+      hint: meta.hint,
+      toggle: true,
+      onClick: () => editor.setTool(name),
+    });
+    toolButtons.set(name, node);
+    toolButtonsRow.push(node);
+  }
+  const tools = group('group.tools', ...toolButtonsRow);
+
   // --- history -------------------------------------------------------------
-  const undoButton = button('Undo', 'Undo (Ctrl+Z)', 'undo', () => editor.undo());
-  const redoButton = button('Redo', 'Redo (Ctrl+Shift+Z / Ctrl+Y)', 'redo', () => editor.redo());
-  toolRow.append(separator(), undoButton, redoButton);
+  const undoButton = iconButton({
+    testId: 'undo',
+    icon: 'undo',
+    label: () => t('action.undo'),
+    hint: 'Ctrl+Z',
+    onClick: () => editor.undo(),
+  });
+  const redoButton = iconButton({
+    testId: 'redo',
+    icon: 'redo',
+    label: () => t('action.redo'),
+    hint: 'Ctrl+Shift+Z',
+    onClick: () => editor.redo(),
+  });
+  const history = group('group.history', undoButton, redoButton);
 
   // --- zoom ----------------------------------------------------------------
-  const zoomOut = button('−', 'Zoom out', 'zoom-out', () => editor.zoomBy(1 / 1.2));
-  const zoomLabel = button('100%', 'Reset zoom to 100% (Ctrl+0)', 'zoom-reset', () => editor.setZoom(1));
-  zoomLabel.classList.add('zoom-label');
-  const zoomIn = button('+', 'Zoom in', 'zoom-in', () => editor.zoomBy(1.2));
-  const zoomFit = button('Fit', 'Zoom to fit (Ctrl+Shift+F)', 'zoom-fit', () => editor.zoomToFit());
-  toolRow.append(separator(), zoomOut, zoomLabel, zoomIn, zoomFit);
+  const zoomOut = iconButton({
+    testId: 'zoom-out',
+    icon: 'zoomOut',
+    label: () => t('zoom.out'),
+    onClick: () => editor.zoomBy(1 / 1.2),
+  });
+  const zoomLabel = el('button', { type: 'button', class: 'zoom-label', 'data-testid': 'zoom-reset' });
+  zoomLabel.addEventListener('click', () => editor.setZoom(1));
+  tooltip.bind(zoomLabel, () => ({ label: t('zoom.reset'), hint: 'Ctrl+0' }));
+  const zoomIn = iconButton({
+    testId: 'zoom-in',
+    icon: 'zoomIn',
+    label: () => t('zoom.in'),
+    onClick: () => editor.zoomBy(1.2),
+  });
+  const zoomFit = iconButton({
+    testId: 'zoom-fit',
+    icon: 'zoomFit',
+    label: () => t('zoom.fit'),
+    hint: 'Ctrl+Shift+F',
+    onClick: () => editor.zoomToFit(),
+  });
+  const zoom = group('group.zoom', zoomOut, zoomLabel, zoomIn, zoomFit);
 
   // --- object actions ------------------------------------------------------
-  const actions = el('div', { class: 'toolbar-row' });
-  actions.append(
-    button('Delete', 'Delete selection (Delete)', 'delete', () => editor.deleteSelection()),
-    button('Duplicate', 'Duplicate selection (Ctrl+D)', 'duplicate', () => editor.duplicateSelection()),
-    button('Front', 'Bring to front', 'front', () => editor.bringToFront()),
-    button('Back', 'Send to back', 'back', () => editor.sendToBack()),
+  const objectActions = group(
+    'group.selection',
+    iconButton({
+      testId: 'delete',
+      icon: 'trash',
+      label: () => t('action.delete'),
+      hint: 'Del',
+      onClick: () => editor.deleteSelection(),
+    }),
+    iconButton({
+      testId: 'duplicate',
+      icon: 'duplicate',
+      label: () => t('action.duplicate'),
+      hint: 'Ctrl+D',
+      onClick: () => editor.duplicateSelection(),
+    }),
+    iconButton({
+      testId: 'front',
+      icon: 'front',
+      label: () => t('action.front'),
+      onClick: () => editor.bringToFront(),
+    }),
+    iconButton({
+      testId: 'back',
+      icon: 'back',
+      label: () => t('action.back'),
+      onClick: () => editor.sendToBack(),
+    }),
   );
 
   // --- io ------------------------------------------------------------------
@@ -108,89 +207,160 @@ export function createChrome(toolbar: HTMLElement, statusbar: HTMLElement, edito
     void file.text().then((text) => {
       try {
         editor.loadJSON(text);
-        setStatus(`Loaded ${file.name}`);
+        setStatus('status.loaded', { file: file.name });
       } catch (error) {
-        setStatus(`Load failed: ${error instanceof Error ? error.message : String(error)}`);
+        setStatus('status.loadFailed', { error: error instanceof Error ? error.message : String(error) });
       }
       fileInput.value = '';
     });
   });
 
-  const ioRow = el('div', { class: 'toolbar-row' });
-  ioRow.append(
-    button('Export PNG', 'Download a clean PNG of all content', 'export-png', () => editor.downloadPNG('coslate.png')),
-    button('Save JSON', 'Download the scene as JSON (Ctrl+S)', 'save-json', () => editor.downloadJSON('coslate.scene.json')),
-    button('Load JSON', 'Load a scene from a JSON file', 'load-json', () => fileInput.click()),
-    button('Clear', 'Remove every object', 'clear', () => editor.clear()),
+  const io = group(
+    'group.file',
+    iconButton({
+      testId: 'export-png',
+      icon: 'image',
+      label: () => t('file.exportPng'),
+      onClick: () => editor.downloadPNG('coslate.png'),
+    }),
+    iconButton({
+      testId: 'save-json',
+      icon: 'download',
+      label: () => t('file.saveJson'),
+      hint: 'Ctrl+S',
+      onClick: () => editor.downloadJSON('coslate.scene.json'),
+    }),
+    iconButton({
+      testId: 'load-json',
+      icon: 'upload',
+      label: () => t('file.loadJson'),
+      onClick: () => fileInput.click(),
+    }),
+    iconButton({
+      testId: 'clear',
+      icon: 'clearBoard',
+      label: () => t('file.clear'),
+      onClick: () => editor.clear(),
+    }),
     fileInput,
   );
 
+  // --- language ------------------------------------------------------------
+  // A native <select>, because a language menu is exactly what it is good at:
+  // keyboard navigation, screen-reader support and mobile pickers for free.
+  const languageSelect = el('select', {
+    class: 'language-select',
+    'data-testid': 'locale-select',
+  });
+  for (const language of i18n.languages) {
+    const option = el('option', { value: language.tag });
+    option.textContent = language.label;
+    languageSelect.append(option);
+  }
+  languageSelect.value = i18n.i18n.locale;
+  languageSelect.addEventListener('change', () => {
+    i18n.setLocale(languageSelect.value);
+  });
+  const globe = el('span', { class: 'toolbar-glyph' });
+  globe.append(icon('globe', 18));
+  const language = group('group.language', globe, languageSelect);
+  tooltip.bind(languageSelect, () => ({ label: t('language.label') }));
+
   // --- style ---------------------------------------------------------------
-  const styleRow = el('div', { class: 'toolbar-row' });
+  const style = el('div', { class: 'toolbar-group toolbar-style', role: 'group' });
+  style.dataset.labelKey = 'group.style';
+  style.setAttribute('aria-label', t('group.style'));
   for (const color of STROKE_PALETTE) {
     const swatch = el('button', {
       type: 'button',
       class: 'swatch',
-      title: `Stroke ${color}`,
       'data-testid': `stroke-${color.replace('#', '')}`,
       'aria-pressed': 'false',
     });
     swatch.style.background = color;
     swatch.addEventListener('click', () => editor.setStyle({ stroke: color }));
+    tooltip.bind(swatch, () => ({ label: t('style.stroke', { color }) }));
     strokeButtons.set(color, swatch);
-    styleRow.append(swatch);
+    style.append(swatch);
   }
 
-  styleRow.append(separator());
+  style.append(separator());
   for (const option of FILL_OPTIONS) {
     const testId = option.value === null ? 'fill-none' : `fill-${option.value.replace('#', '')}`;
     const swatch = el('button', {
       type: 'button',
       class: option.value === null ? 'swatch swatch-none' : 'swatch',
-      title: option.label,
       'data-testid': testId,
       'aria-pressed': 'false',
     });
     if (option.value !== null) swatch.style.background = option.value;
     swatch.addEventListener('click', () => editor.setStyle({ fill: option.value }));
+    tooltip.bind(swatch, () => ({ label: t(option.key) }));
     fillButtons.set(String(option.value), swatch);
-    styleRow.append(swatch);
+    style.append(swatch);
   }
 
-  styleRow.append(separator());
+  style.append(separator());
   for (const width of STROKE_WIDTHS) {
-    const node = button('', `${width}px stroke`, `width-${width}`, () => editor.setStyle({ strokeWidth: width }));
-    node.classList.add('width-button');
+    const node = el('button', {
+      type: 'button',
+      class: 'width-button',
+      'data-testid': `width-${width}`,
+      'aria-pressed': 'false',
+    });
     const dot = el('span', { class: 'width-dot' });
     const size = Math.min(12, 3 + width);
     dot.style.width = `${size}px`;
     dot.style.height = `${size}px`;
     node.append(dot);
+    node.addEventListener('click', () => editor.setStyle({ strokeWidth: width }));
+    tooltip.bind(node, () => ({ label: t('style.width', { width }) }));
     widthButtons.set(width, node);
-    styleRow.append(node);
+    style.append(node);
   }
 
-  toolbar.append(toolRow, actions, ioRow, styleRow);
+  const main = el('div', { class: 'toolbar-main' });
+  main.append(tools, history, zoom, objectActions, io, language);
+  toolbar.append(main, style);
 
   // --- status bar ----------------------------------------------------------
-  const toolStatus = el('span');
-  const selectionStatus = el('span');
-  const objectStatus = el('span');
-  const zoomStatus = el('span');
-  const saveStatus = el('span');
-  const hint = el('span', { class: 'status-hint' });
-  hint.textContent = 'window.__scene = { store, getScene, getSelection, setTool, … } — debug/test hook';
-  statusbar.append(toolStatus, selectionStatus, objectStatus, zoomStatus, saveStatus, hint);
+  interface StatusItem {
+    root: HTMLElement;
+    label: HTMLElement;
+    value: HTMLElement;
+  }
 
-  function setStatus(text: string): void {
-    saveStatus.textContent = text;
+  function statusItem(): StatusItem {
+    const label = el('span', { class: 'status-label' });
+    const value = el('strong');
+    const root = el('span', {}, [label, ' ', value]);
+    statusbar.append(root);
+    return { root, label, value };
+  }
+
+  const toolStatus = statusItem();
+  const selectionStatus = statusItem();
+  const objectStatus = statusItem();
+  const zoomStatus = statusItem();
+  const message = el('span', { class: 'status-message' });
+  const hint = el('span', { class: 'status-hint' });
+  // A code snippet, not prose: deliberately outside the catalog.
+  hint.textContent = 'window.__scene = { store, getScene, getSelection, setTool, … } — debug/test hook';
+  statusbar.append(message, hint);
+
+  let status: { key: MessageKey; params?: MessageParams } = { key: 'status.newScene' };
+
+  function setStatus(key: MessageKey, params?: MessageParams): void {
+    status = { key, params };
+    message.textContent = t(key, params);
   }
 
   function setPressed<T>(map: Map<T, HTMLButtonElement>, value: T): void {
     for (const [key, node] of map) node.setAttribute('aria-pressed', String(key === value));
   }
 
-  function sync(): void {
+  /** Re-read every translated string. Cheap: text nodes only, no rebuilds. */
+  function render(): void {
     const scene = editor.getScene();
     const selection = editor.getSelection();
     const tool = editor.getToolName();
@@ -208,19 +378,41 @@ export function createChrome(toolbar: HTMLElement, statusbar: HTMLElement, edito
       if (node) node.disabled = !hasSelection;
     }
 
-    toolStatus.innerHTML = `tool <strong>${tool}</strong>`;
-    selectionStatus.innerHTML = `selection <strong>${selection.length}</strong>`;
-    objectStatus.innerHTML = `objects <strong>${scene.order.length}</strong>`;
-    const percent = Math.round(scene.viewport.scale * 100);
-    zoomStatus.innerHTML = `zoom <strong>${percent}%</strong>`;
-    zoomLabel.textContent = `${percent}%`;
+    for (const node of toolbar.querySelectorAll<HTMLElement>('[data-label-key]')) {
+      node.setAttribute('aria-label', t(node.dataset.labelKey as MessageKey));
+    }
+    languageSelect.value = i18n.i18n.locale;
+
+    toolStatus.label.textContent = t('status.tool');
+    toolStatus.value.textContent = t(TOOL_META[tool].key);
+    selectionStatus.label.textContent = t('status.selection');
+    selectionStatus.value.textContent = i18n.i18n.formatNumber(selection.length);
+    // The counters are a label plus a formatted number, not a sentence: splitting
+    // a plural message around a bold value is how translations break.
+    objectStatus.label.textContent = t('status.objects');
+    objectStatus.value.textContent = i18n.i18n.formatNumber(scene.order.length);
+    zoomStatus.label.textContent = t('status.zoom');
+    const percent = i18n.i18n.formatNumber(scene.viewport.scale, { style: 'percent' });
+    zoomStatus.value.textContent = percent;
+    zoomLabel.textContent = percent;
+
+    // The message is state, so it survives the switch in the new language.
+    message.textContent = t(status.key, status.params);
+  }
+
+  function sync(): void {
+    render();
   }
 
   editor.on('tool', sync);
   editor.on('selection', sync);
   editor.on('style', sync);
   editor.on('change', sync);
-  sync();
+  i18n.i18n.subscribe(() => {
+    tooltip.refresh();
+    render();
+  });
+  render();
 
   return { sync, setStatus };
 }

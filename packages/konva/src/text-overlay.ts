@@ -21,6 +21,12 @@ export interface TextOverlayOptions {
   color: string;
   value: string;
   placeholder?: string;
+  /**
+   * Accessible name for the field. Supplied by the caller because the runtime
+   * ships no copy — a hardcoded English `aria-label` is a localization bug that
+   * only screen-reader users ever see, which is the worst kind.
+   */
+  ariaLabel?: string;
   onCommit(value: string): void;
   onCancel?(): void;
 }
@@ -52,7 +58,8 @@ export class TextOverlay {
     textarea.spellcheck = false;
     textarea.setAttribute('autocapitalize', 'off');
     textarea.setAttribute('autocomplete', 'off');
-    textarea.setAttribute('aria-label', 'Edit text');
+    const ariaLabel = options.ariaLabel?.trim();
+    if (ariaLabel) textarea.setAttribute('aria-label', ariaLabel);
     if (options.placeholder !== undefined) textarea.placeholder = options.placeholder;
 
     Object.assign(textarea.style, {

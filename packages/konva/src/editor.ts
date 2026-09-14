@@ -58,6 +58,23 @@ export interface EditorOptions {
   historyLimit?: number;
   /** Watch the container and resize the stage. Defaults to `true`. */
   observeResize?: boolean;
+  /**
+   * Placeholder for the text tool's `<textarea>`, or a function read each time it
+   * opens. The runtime ships no user-visible copy, so a localized embed passes
+   * `() => i18n.t('text.placeholder')`; omit it and the field is simply empty.
+   */
+  textPlaceholder?: string | (() => string);
+  /**
+   * Accessible name for that same field, same rules. Omit both and the field is
+   * unlabelled rather than labelled in English — an embed that cares about
+   * localization is expected to supply one.
+   */
+  textAriaLabel?: string | (() => string);
+}
+
+/** Coerce `string | () => string | undefined` into a lazy getter. */
+function textOption(value: string | (() => string) | undefined): () => string {
+  return typeof value === 'function' ? value : () => value ?? '';
 }
 
 const PASTE_OFFSET = 16;
@@ -86,6 +103,8 @@ export class WhiteboardEditor implements ToolHost {
   private readonly canvasHost: HTMLDivElement;
   private readonly transformer: Konva.Transformer;
   private readonly textOverlay: TextOverlay;
+  private readonly textPlaceholder: () => string;
+  private readonly textAriaLabel: () => string;
   private readonly tools = new Map<ToolName, Tool>();
   private readonly listeners = new Map<EditorEventName, Set<() => void>>();
 
@@ -105,6 +124,8 @@ export class WhiteboardEditor implements ToolHost {
   constructor(options: EditorOptions) {
     this.container = options.container;
     this.style = { ...DEFAULT_STYLE, ...(options.style ?? {}) };
+    this.textPlaceholder = textOption(options.textPlaceholder);
+    this.textAriaLabel = textOption(options.textAriaLabel);
 
     const computed = typeof getComputedStyle === 'function' ? getComputedStyle(this.container) : null;
     if (computed && computed.position === 'static') this.container.style.position = 'relative';
@@ -309,7 +330,8 @@ export class WhiteboardEditor implements ToolHost {
       fontFamily: request.fontFamily,
       color: request.color,
       value: request.value,
-      placeholder: request.objectId ? undefined : 'Type…',
+      placeholder: request.objectId ? undefined : this.textPlaceholder(),
+      ariaLabel: this.textAriaLabel(),
       onCommit: (value) => this.commitText(request, value),
       onCancel: () => {
         this.textOverlayWorld = null;

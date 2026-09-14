@@ -250,7 +250,87 @@ All types share the same transform fields, the same `version`, and the same `met
 
 ---
 
-## 8. Non-goals for v1
+## 8. Locale
+
+**Core owns the mechanism. The host owns the language.** `packages/core/src/i18n.ts` contains
+not one user-visible string; it contains `createI18n`, catalog types, matching, plurals,
+formatting and direction. That split is what lets the same catalog drive a canvas, an HTML
+chrome, a worker or a server-side thumbnail, and it keeps principle 9 intact — `Intl` is a
+language built-in, not a dependency, so core still depends on nothing.
+
+```ts
+const i18n = createI18n({ catalogs: { en, 'zh-CN': zh, ar }, requested: navigator.languages });
+i18n.locale;                            // always one of `catalogs`, never a failed request
+i18n.dir;                               // 'rtl' for ar
+i18n.t('status.objects', { count: 3 }); // plural category + locale-formatted number
+i18n.setLocale('ar');                   // returns the tag actually resolved
+```
+
+Four decisions worth stating, because each is a place where a library would have made a
+different one:
+
+1. **Typed catalogs, not key strings.** One catalog is the reference; every other locale is typed
+   against `keyof typeof reference`, so a missing translation fails `tsc` instead of rendering
+   English in the middle of a Chinese UI. Adding a message makes the compiler list every catalog
+   that still needs it.
+
+2. **RFC 4647 lookup, plus CLDR likely subtags, plus one extension.** Standard lookup walks
+   `zh-Hant-TW` → `zh-Hant` → `zh` looking for an exact match, and returns the default when there
+   is none — which means a browser asking for `zh` gets English whenever the only catalog is
+   `zh-CN`. Each requested tag is therefore tried three ways: its truncation chain exactly as the
+   RFC says; the chain of its *maximized* form (`Intl.Locale.maximize()`, so `zh-TW` is
+   `zh-Hant-TW` and can match a `zh-Hant` catalog exactly rather than by guessing); then the
+   nearest catalog by shared leading subtags of the maximized forms, requiring at least the
+   primary language to match. That last step is what makes `zh` prefer `zh-CN` over `zh-Hant`,
+   because `zh-Hans-CN` shares more with it — and it does so whatever order the catalogs were
+   declared in, which an alias table or a first-prefix-wins rule would not. A requested tag is
+   exhausted before the next is considered, so a user who asked for `zh-TW` gets Chinese rather
+   than the Arabic they listed second. The deviations are deliberate and documented; they are not
+   "close enough to lookup".
+
+3. **Plurals keyed by CLDR category.** A message is a string *or* a map of plural forms. English
+   needs `one`/`other`, Chinese needs `other`, Arabic needs six — and collapsing those into
+   "singular/plural" is visibly wrong for 0, 2 and 11. A missing category falls back to `other`
+   within the same catalog, then to the fallback locale, then to the key.
+
+4. **Direction is a property of the translator.** `dir` comes from `Intl.Locale.prototype.textInfo`
+   where the runtime has it, with a script table as the fallback for engines that do not — so
+   `ku-Latn` is left-to-right and `ku-Arab` is not. The chrome then needs almost no direction
+   logic of its own: flex rows follow the writing direction, so the toolbar, the style pill and
+   the status line mirror on their own, and the few directional odds and ends are written as
+   logical properties (`text-align: end`) rather than `left`/`right`.
+
+**Nor does the runtime ship copy.** The text tool's placeholder used to be a `'Type…'` constant
+inside `@coslate/konva`, and the field's `aria-label` a `'Edit text'` constant — a localization bug
+wearing a default, and in the second case one only screen-reader users ever meet, which is the
+worst kind to leave for a host to find. Both are now editor options (`textPlaceholder`,
+`textAriaLabel`), each accepting a string or a function read when the editor opens, so the demo
+passes `() => i18n.t('text.placeholder')` and the value is already in the right language when the
+tool is used. The rule for both packages is the same: mechanism in the runtime, language in the
+host.
+
+One exception is deliberate and stays: `Command.label` (`'Edit text'`, `'object.create'`-style
+provenance) is an English sentence **inside the document**. Translating it would bake one language
+into every saved file and every synced command, so it stays a machine-facing label; a host that
+renders an undo history should switch on `command.type` and translate that instead.
+
+**What core deliberately does not do:** apply `document.documentElement.lang`/`dir`, choose a
+catalog set, remember a choice, or render a menu. Those are product decisions. `apps/demo/src/i18n`
+is a worked example of them — `?lang=` (a one-off override, kept in the URL because it records the
+user's *preference*, while the app renders the *resolution*: `zh-TW` stays in the address bar and
+the Traditional catalog renders) → remembered choice → `navigator.languages`, persistence under a
+versioned key, `<html lang>`/`<html dir>` plus `document.title` and the meta description on every
+switch, and a native `<select>` whose options are endonyms from `Intl.DisplayNames` (a language is
+listed in its own language, so the menu is usable before you can read the current UI language).
+
+Status text is held as a **key plus params**, never as a finished string, so switching language
+re-renders the last message in the new language. The same rule is why counters are a label plus a
+formatted number rather than a plural sentence with a bold value spliced into the middle:
+splitting a message around markup is how translations break.
+
+---
+
+## 9. Non-goals for v1
 
 Explicitly out of scope, and enforced by not building them:
 
@@ -269,7 +349,7 @@ Explicitly out of scope, and enforced by not building them:
 
 ---
 
-## 9. Growth path (designed, not built)
+## 10. Growth path (designed, not built)
 
 **Command protocol → remote / undo-safe sync.**
 Commands are already immutable values with inverses and a `source` tag. A sync layer becomes:
@@ -296,22 +376,22 @@ annotations live, which is why it is free-form today.
 
 ---
 
-## 10. Roadmap
+## 11. Roadmap
 
 | | Scope | Status |
 | --- | --- | --- |
-| **v1** | Scene model, command protocol + JSON Patch, transactions, bounded undo/redo, viewport math, serialization with migrations, Konva renderer, six object types, eight tools, style system, PNG/JSON export, demo app, unit + Playwright suites | **shipped** |
+| **v1** | Scene model, command protocol + JSON Patch, transactions, bounded undo/redo, viewport math, serialization with migrations, Konva renderer, six object types, eight tools, style system, locale primitives, PNG/JSON export, demo app, unit + Playwright suites | **shipped** |
 | **v1.1** | Grouping (`parentId` is already reserved), lock/hide UI, copy/paste across documents, image object, alignment guides, snap-to-grid, multi-page documents, `store.beginTransaction()` for long-lived gestures | planned |
 | **v2** | Object Plugin registry, domain packs, optional sync package built on the command protocol, AI client as a first-class command producer, alternative (SVG/headless) renderers | planned |
 
 ---
 
-## 11. Package boundaries
+## 12. Package boundaries
 
 | Package | May depend on | Must not |
 | --- | --- | --- |
-| `@coslate/core` | nothing at runtime | use the DOM, import a renderer, hold editor state |
-| `@coslate/konva` | `@coslate/core`, `konva` | own the document, mutate the scene directly, leak Konva types into the public scene API |
+| `@coslate/core` | nothing at runtime | use the DOM, import a renderer, hold editor state, ship a user-visible string |
+| `@coslate/konva` | `@coslate/core`, `konva` | own the document, mutate the scene directly, leak Konva types into the public scene API, ship user-visible copy |
 | `apps/demo` | both packages | contain whiteboard logic that belongs in a package |
 
 `packages/konva` consumes `@coslate/core` through its built `dist` output via a TypeScript
@@ -320,7 +400,7 @@ another package fails `pnpm typecheck`.
 
 ---
 
-## 12. Testing strategy
+## 13. Testing strategy
 
 | Layer | Tool | What it proves |
 | --- | --- | --- |
@@ -329,7 +409,8 @@ another package fails `pnpm typecheck`.
 | Viewport | vitest | world↔screen round-trip, cursor-pinned zoom invariance, fit-to-content |
 | Serialization | vitest | round-trip equality, typed failures including future versions |
 | Geometry | vitest | hit testing, marquee selection, point normalisation, content bounds |
-| Product | Playwright + real Chromium | tools produce the right *scene state*, zoom changes the rendered canvas, export produces real files |
+| Locale | vitest | RFC 4647 lookup, truncation, likely-subtag resolution (`zh` vs `zh-TW`), plural category per locale, per-key fallback, direction incl. script overrides, switching + subscribers |
+| Product | Playwright + real Chromium | tools produce the right *scene state*, zoom changes the rendered canvas, export produces real files, locale switching translates the chrome and mirrors RTL |
 
 The e2e suite asserts against `window.__scene` — the live document — rather than DOM text, so a
 green run means the model, the command pipeline, the renderer and the tools agree.

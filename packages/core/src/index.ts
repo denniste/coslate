@@ -115,3 +115,20 @@ export {
   updateObjectDataOps,
   updateObjectOps,
 } from './patches.js';
+
+export type {
+  Catalog,
+  Direction,
+  I18n,
+  I18nOptions,
+  Message,
+  MessageParams,
+  PluralForms,
+} from './i18n.js';
+export {
+  canonicalLocale,
+  createI18n,
+  DEFAULT_LOCALE,
+  localeDirection,
+  lookupLocale,
+} from './i18n.js';

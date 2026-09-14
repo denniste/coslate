@@ -13,26 +13,124 @@
  * in the task; override with COSLATE_PLAYWRIGHT / COSLATE_CHROMIUM if needed.
  */
 
-process.env.TMPDIR = '/dev/shm';
-
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const PLAYWRIGHT_ENTRY =
-  process.env.COSLATE_PLAYWRIGHT ?? '/root/.nvm/versions/node/v24.14.1/lib/node_modules/playwright/index.mjs';
-const CHROMIUM_EXECUTABLE =
-  process.env.COSLATE_CHROMIUM ?? '/root/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome';
+// /dev/shm exists on Linux only; elsewhere let the OS choose its own temp dir.
+if (existsSync('/dev/shm')) process.env.TMPDIR = '/dev/shm';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
 const ARTIFACTS = path.join(ROOT, '.artifacts');
+const DEMO_DIST = path.join(ROOT, 'apps/demo/dist');
 const PORT = Number(process.env.COSLATE_E2E_PORT ?? 4321);
 const BASE_URL = `http://127.0.0.1:${PORT}/`;
+const require = createRequire(import.meta.url);
 
-const { chromium } = await import(PLAYWRIGHT_ENTRY);
+// ------------------------------------------------------------- toolchain lookup
+// Playwright is deliberately *not* a workspace dependency: the suite borrows a
+// preinstalled copy. Resolve it instead of pinning one machine's absolute path,
+// so the suite runs on any host that has it.
+
+function resolvePlaywrightEntry() {
+  if (process.env.COSLATE_PLAYWRIGHT) {
+    if (!existsSync(process.env.COSLATE_PLAYWRIGHT)) {
+      throw new Error(`COSLATE_PLAYWRIGHT points at ${process.env.COSLATE_PLAYWRIGHT}, which does not exist.`);
+    }
+    return process.env.COSLATE_PLAYWRIGHT;
+  }
+  const candidates = [];
+  for (const specifier of ['playwright', 'playwright-core']) {
+    try {
+      candidates.push(require.resolve(specifier));
+    } catch {
+      // not installed locally — try the global prefixes below
+    }
+  }
+  const globalRoots = [];
+  try {
+    globalRoots.push(
+      execFileSync('npm', ['root', '-g'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(),
+    );
+  } catch {
+    // npm is not on PATH
+  }
+  const nvmVersions = path.join(os.homedir(), '.nvm/versions/node');
+  if (existsSync(nvmVersions)) {
+    for (const version of readdirSync(nvmVersions).sort().reverse()) {
+      globalRoots.push(path.join(nvmVersions, version, 'lib/node_modules'));
+    }
+  }
+  for (const root of globalRoots.filter(Boolean)) {
+    for (const name of ['playwright', 'playwright-core']) {
+      candidates.push(path.join(root, name, 'index.mjs'), path.join(root, name, 'index.js'));
+    }
+  }
+  const found = candidates.find((candidate) => candidate && existsSync(candidate));
+  if (!found) {
+    throw new Error(
+      `Playwright not found. Install it (npm i -g playwright) or set COSLATE_PLAYWRIGHT to its index.mjs.\nTried:\n  ${candidates.join('\n  ') || '(no candidates)'}`,
+    );
+  }
+  return found;
+}
+
+/** Ask Playwright where its Chromium is; fall back to scanning its browser cache. */
+function resolveChromiumExecutable(chromium) {
+  if (process.env.COSLATE_CHROMIUM) {
+    if (!existsSync(process.env.COSLATE_CHROMIUM)) {
+      throw new Error(`COSLATE_CHROMIUM points at ${process.env.COSLATE_CHROMIUM}, which does not exist.`);
+    }
+    return process.env.COSLATE_CHROMIUM;
+  }
+  try {
+    const fromPlaywright = chromium.executablePath();
+    if (fromPlaywright && existsSync(fromPlaywright)) return fromPlaywright;
+  } catch {
+    // no revision resolved from the registry — scan the cache below
+  }
+  const browsersRoot = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), '.cache/ms-playwright');
+  const revisions = existsSync(browsersRoot)
+    ? readdirSync(browsersRoot)
+        .map((entry) => /^chromium(?:-headless_shell)?-(\d+)$/.exec(entry))
+        .filter(Boolean)
+        .map((match) => Number(match[1]))
+        .sort((a, b) => b - a)
+    : [];
+  const candidates = [];
+  for (const revision of revisions) {
+    for (const prefix of ['chromium', 'chromium_headless_shell']) {
+      for (const [dir, binary] of [
+        ['chrome-linux64', 'chrome'],
+        ['chrome-linux', 'chrome'],
+        ['chrome-linux64', 'headless_shell'],
+        ['chrome-linux', 'headless_shell'],
+        ['chrome-mac', 'Chromium.app/Contents/MacOS/Chromium'],
+        ['chrome-mac-arm64', 'Chromium.app/Contents/MacOS/Chromium'],
+        ['chrome-win', 'chrome.exe'],
+      ]) {
+        candidates.push(path.join(browsersRoot, `${prefix}-${revision}`, dir, binary));
+      }
+    }
+  }
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    throw new Error(
+      `Chromium not found under ${browsersRoot}. Run \`npx playwright install chromium\` or set COSLATE_CHROMIUM to the browser binary.`,
+    );
+  }
+  return found;
+}
+
+const PLAYWRIGHT_ENTRY = resolvePlaywrightEntry();
+const { chromium } = await import(pathToFileURL(PLAYWRIGHT_ENTRY).href);
+const CHROMIUM_EXECUTABLE = resolveChromiumExecutable(chromium);
 
 // --------------------------------------------------------------------- harness
 
@@ -65,6 +163,22 @@ const getRenderedScale = (page) => page.evaluate(() => window.__scene.getRendere
 const objectsOfType = (scene, type) => scene.order.map((id) => scene.objects[id]).filter((o) => o.type === type);
 const round = (value) => Math.round(value * 1000) / 1000;
 
+/** Newest mtime under a directory tree, or 0 when it does not exist. */
+function newestMtimeMs(dir) {
+  if (!existsSync(dir)) return 0;
+  let newest = 0;
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      else if (entry.isFile()) newest = Math.max(newest, statSync(full).mtimeMs);
+    }
+  }
+  return newest;
+}
+
 async function waitForServer(url, timeoutMs = 40_000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = 'no attempt';
@@ -85,10 +199,29 @@ async function waitForServer(url, timeoutMs = 40_000) {
 
 await mkdir(ARTIFACTS, { recursive: true });
 
+// The suite drives the *built* demo, so a missing or stale bundle changes what is
+// being tested. Missing is fatal; stale is loud, because that is how a suite
+// silently passes against code you already fixed.
+const DIST_INDEX = path.join(DEMO_DIST, 'index.html');
+if (!existsSync(DIST_INDEX)) {
+  console.error(`No built demo at ${DEMO_DIST}.\nRun \`pnpm build\` first — or \`pnpm e2e\`, which builds and then runs this suite.`);
+  process.exit(1);
+}
+const staleDist =
+  ['packages/core/src', 'packages/konva/src', 'apps/demo/src']
+    .map((relative) => newestMtimeMs(path.join(ROOT, relative)))
+    .reduce((a, b) => Math.max(a, b), 0) > statSync(DIST_INDEX).mtimeMs;
+if (staleDist) {
+  console.warn(
+    '\n!! apps/demo/dist is older than the sources — this run tests the previous build.\n' +
+      '!! Run `pnpm build` (or `pnpm e2e`, which builds first) before trusting these results.\n',
+  );
+}
+
 const viteBin = path.join(ROOT, 'node_modules/.bin/vite');
 const preview = spawn(viteBin, ['preview', '--port', String(PORT), '--strictPort'], {
   cwd: path.join(ROOT, 'apps/demo'),
-  env: { ...process.env, TMPDIR: '/dev/shm' },
+  env: { ...process.env },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let previewLog = '';
@@ -105,7 +238,9 @@ const pageErrors = [];
 
 try {
   await waitForServer(BASE_URL);
-  console.log(`\nCoSlate e2e — serving ${BASE_URL} from apps/demo/dist\n`);
+  console.log(`\nCoSlate e2e — serving ${BASE_URL} from apps/demo/dist`);
+  console.log(`  chromium:   ${CHROMIUM_EXECUTABLE}`);
+  console.log(`  playwright: ${PLAYWRIGHT_ENTRY}\n`);
 
   browser = await chromium.launch({
     executablePath: CHROMIUM_EXECUTABLE,
@@ -115,6 +250,9 @@ try {
     viewport: { width: 1280, height: 820 },
     acceptDownloads: true,
     deviceScaleFactor: 1,
+    // Pin the browser locale: the demo resolves its language from
+    // `navigator.languages`, and the assertions below are written in English.
+    locale: 'en-US',
   });
   const page = await context.newPage();
   page.on('pageerror', (error) => pageErrors.push(String(error)));
@@ -592,6 +730,238 @@ try {
     return 'scene replaced from file, history reset';
   });
 
+  // ------------------------------------------------------- q. toolbar shape
+  await check('q', 'the toolbar is icon-only, labelled, and explains itself on hover', async () => {
+    const audit = await page.evaluate(() => {
+      const iconOnly = [
+        'tool-select', 'tool-pen', 'tool-eraser', 'tool-rect', 'tool-ellipse', 'tool-line', 'tool-arrow', 'tool-text',
+        'undo', 'redo', 'zoom-out', 'zoom-in', 'zoom-fit',
+        'delete', 'duplicate', 'front', 'back',
+        'export-png', 'save-json', 'load-json', 'clear',
+      ];
+      const problems = [];
+      for (const id of iconOnly) {
+        const node = document.querySelector(`[data-testid="${id}"]`);
+        if (!node) {
+          problems.push(`${id}: missing`);
+          continue;
+        }
+        if (!node.querySelector('svg')) problems.push(`${id}: no icon`);
+        if (!node.getAttribute('aria-label')) problems.push(`${id}: no accessible name`);
+        if ((node.textContent ?? '').trim() !== '') problems.push(`${id}: expected icon-only, found text`);
+      }
+      const zoom = document.querySelector('[data-testid="zoom-reset"]');
+      if (!zoom || !/%$/.test((zoom.textContent ?? '').trim())) problems.push('zoom-reset: no percentage readout');
+      if (!zoom?.getAttribute('aria-label')) problems.push('zoom-reset: no accessible name');
+      return { icons: iconOnly.length, groups: document.querySelectorAll('.toolbar-group').length, problems };
+    });
+    assert.deepEqual(audit.problems, [], `toolbar problems: ${audit.problems.join(' | ')}`);
+
+    await page.hover('[data-testid="tool-arrow"]');
+    const tooltip = page.locator('.tooltip');
+    await tooltip.waitFor({ state: 'visible', timeout: 3000 });
+    const label = ((await tooltip.locator('.tooltip-label').textContent()) ?? '').trim();
+    const hint = ((await tooltip.locator('.tooltip-hint').textContent()) ?? '').trim();
+    assert.equal(label, 'Arrow', `hover hint named "${label}" instead of the tool`);
+    assert.equal(hint, 'A', `hover hint carried "${hint}" instead of the shortcut`);
+    await shot(page, 'q-toolbar');
+    return `${audit.icons} icon-only controls in ${audit.groups} groups, hover hint "${label} ${hint}"`;
+  });
+
+  // --------------------------------------------------- r. narrow arrangement
+  await check('r', 'every toolbar control stays reachable and unclipped down to 320px', async () => {
+    const widths = [1024, 768, 560, 480, 420, 360, 320];
+    const problems = [];
+    const heights = [];
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 820 });
+      await page.waitForTimeout(80);
+      const audit = await page.evaluate(() => {
+        const viewport = window.innerWidth;
+        const issues = [];
+        if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) {
+          issues.push('page scrolls horizontally');
+        }
+        // Only real controls: the hidden <input type="file"> is meant to be 0x0.
+        for (const node of document.querySelectorAll('#toolbar button[data-testid], #toolbar select[data-testid]')) {
+          const box = node.getBoundingClientRect();
+          const id = node.getAttribute('data-testid');
+          if (box.width === 0 || box.height === 0) {
+            issues.push(`${id}: collapsed`);
+          } else if (box.left < -0.5 || box.right > viewport + 0.5) {
+            issues.push(`${id}: outside the viewport (${Math.round(box.left)}..${Math.round(box.right)})`);
+          }
+        }
+        const bar = document.querySelector('#statusbar');
+        if (bar && bar.scrollWidth > bar.clientWidth + 1) issues.push('status bar overflows');
+        const canvas = document.querySelector('#canvas-host');
+        return {
+          issues,
+          canvasHeight: canvas ? Math.round(canvas.getBoundingClientRect().height) : 0,
+          groups: document.querySelectorAll('.toolbar-group').length,
+        };
+      });
+      for (const issue of audit.issues) problems.push(`${width}px ${issue}`);
+      if (audit.canvasHeight < 300) problems.push(`${width}px toolbar left only ${audit.canvasHeight}px of canvas`);
+      if (audit.groups !== 7) problems.push(`${width}px lost a toolbar group (${audit.groups}/7)`);
+      heights.push(`${width}:${audit.canvasHeight}`);
+    }
+    await page.setViewportSize({ width: 1280, height: 820 });
+    assert.deepEqual(problems, [], `narrow-layout problems: ${problems.join(' | ')}`);
+    return `7 widths, 320-1024px, all 21 controls reachable; canvas height ${heights.join(' ')}`;
+  });
+
+  // ------------------------------------------------------------------ s. i18n
+  await check('s', 'switching locale translates the chrome, flips dir, and survives a reload', async () => {
+    const keyPattern = /^(group|tool|action|zoom|file|style|status|language)\.[A-Za-z.]+$/;
+
+    const readLocale = () =>
+      page.evaluate(() => ({
+        locale: window.__i18n.locale,
+        dir: window.__i18n.dir,
+        lang: document.documentElement.lang,
+        htmlDir: document.documentElement.dir,
+        title: document.title,
+      }));
+
+    const start = await readLocale();
+    assert.equal(start.locale, 'en', `expected the default locale to be en, got ${start.locale}`);
+    assert.equal(start.htmlDir, 'ltr', 'English should be left-to-right');
+    assert.match(start.title, /demo whiteboard/, 'the document title should be English');
+
+    await page.selectOption('[data-testid="locale-select"]', 'zh-CN');
+    await page.waitForFunction(() => window.__i18n.locale === 'zh-CN');
+    const zh = await readLocale();
+    assert.equal(zh.lang, 'zh-CN', 'the <html lang> attribute should follow the locale');
+    assert.equal(zh.htmlDir, 'ltr', 'Chinese is left-to-right');
+    assert.equal(zh.title, 'CoSlate — 演示白板', `unexpected title "${zh.title}"`);
+
+    const zhChrome = await page.evaluate(() => ({
+      pen: document.querySelector('[data-testid="tool-pen"]').getAttribute('aria-label'),
+      group: document.querySelector('.toolbar-group').getAttribute('aria-label'),
+      toolLabel: document.querySelector('#statusbar .status-label').textContent,
+      message: document.querySelector('.status-message').textContent,
+      select: document.querySelector('[data-testid="locale-select"]').selectedOptions[0].textContent,
+    }));
+    assert.equal(zhChrome.pen, '画笔 (P)', `pen aria-label was "${zhChrome.pen}"`);
+    assert.equal(zhChrome.group, '工具', `first group aria-label was "${zhChrome.group}"`);
+    assert.equal(zhChrome.toolLabel, '工具', `status label was "${zhChrome.toolLabel}"`);
+    assert.ok(zhChrome.message.length > 0 && !keyPattern.test(zhChrome.message), `status message leaked a key: "${zhChrome.message}"`);
+    // The menu shows each language in its own language, per CLDR.
+    assert.match(zhChrome.select, /中文/, `language menu showed "${zhChrome.select}"`);
+
+    await page.hover('[data-testid="tool-rect"]');
+    await page.locator('.tooltip').waitFor({ state: 'visible' });
+    const zhHint = await page.evaluate(() => ({
+      label: document.querySelector('.tooltip-label').textContent,
+      hint: document.querySelector('.tooltip-hint').textContent,
+    }));
+    assert.equal(zhHint.label, '矩形', `hover hint was "${zhHint.label}"`);
+    assert.equal(zhHint.hint, 'R', 'the shortcut badge is not translated');
+
+    assert.match(page.url(), /[?&]lang=zh-CN\b/, `the URL should carry the choice: ${page.url()}`);
+
+    // Arabic is the right-to-left proof: the chrome must mirror, not just translate.
+    await page.selectOption('[data-testid="locale-select"]', 'ar');
+    await page.waitForFunction(() => window.__i18n.locale === 'ar');
+    const ar = await readLocale();
+    assert.equal(ar.dir, 'rtl', 'Arabic should resolve to right-to-left');
+    assert.equal(ar.htmlDir, 'rtl', 'the <html dir> attribute should be rtl');
+
+    const mirrored = await page.evaluate(() => {
+      const viewport = window.innerWidth;
+      const group = document.querySelector('.toolbar-group').getBoundingClientRect();
+      const select = document.querySelector('[data-testid="locale-select"]').getBoundingClientRect();
+      return {
+        groupLeft: Math.round(group.left),
+        selectLeft: Math.round(select.left),
+        viewport,
+      };
+    });
+    assert.ok(
+      mirrored.groupLeft > mirrored.viewport / 2,
+      `in RTL the first tool group should sit on the right, found left=${mirrored.groupLeft}`,
+    );
+    assert.ok(
+      mirrored.selectLeft < mirrored.viewport / 2,
+      `in RTL the language menu should sit on the left, found left=${mirrored.selectLeft}`,
+    );
+    await shot(page, 's-rtl');
+
+    // The choice is remembered, and it comes back as RTL after a full reload.
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(window.__i18n));
+    const reloaded = await readLocale();
+    assert.equal(reloaded.locale, 'ar', 'the locale should survive a reload');
+    assert.equal(reloaded.htmlDir, 'rtl', 'direction should survive a reload');
+    assert.equal(await page.evaluate(() => localStorage.getItem(window.__i18n.storageKey)), 'ar', 'the choice is persisted');
+
+    // Back to English, and clean up the URL parameter the switcher wrote.
+    await page.selectOption('[data-testid="locale-select"]', 'en');
+    await page.waitForFunction(() => window.__i18n.locale === 'en');
+    const restored = await readLocale();
+    assert.equal(restored.htmlDir, 'ltr', 'switching back should restore ltr');
+    assert.match(restored.title, /demo whiteboard/, 'the title should be English again');
+
+    const leaks = await page.evaluate((pattern) => {
+      const key = new RegExp(pattern);
+      const problems = [];
+      for (const node of document.querySelectorAll('#toolbar [aria-label], #statusbar span, #statusbar strong')) {
+        const label = node.getAttribute('aria-label') ?? '';
+        const text = (node.textContent ?? '').trim();
+        if (key.test(label)) problems.push(`untranslated aria-label: ${label}`);
+        if (key.test(text)) problems.push(`untranslated text: ${text}`);
+      }
+      return problems;
+    }, keyPattern.source);
+    assert.deepEqual(leaks, [], `untranslated strings leaked into the UI: ${leaks.join(' | ')}`);
+
+    return `${start.locale} → zh-CN → ar (rtl, mirrored, persisted) → en; no untranslated keys`;
+  });
+
+  // ------------------------------------------- t. language resolution + copy
+  await check('t', '?lang= resolves by likely subtags, and runtime copy is localized', async () => {
+    // A bare `zh` maximizes to zh-Hans-CN, so it must land on Simplified.
+    await page.goto(`${BASE_URL}?lang=zh`, { waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(window.__i18n));
+    assert.equal(await page.evaluate(() => window.__i18n.locale), 'zh-CN', 'bare `zh` should resolve to zh-CN');
+
+    // `zh-TW` is really `zh-Hant-TW`: likely subtags must pick Traditional, not
+    // the Simplified catalog that happens to be declared first.
+    await page.goto(`${BASE_URL}?lang=zh-TW`, { waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(window.__i18n));
+    const tw = await page.evaluate(() => ({
+      locale: window.__i18n.locale,
+      url: window.location.search,
+      title: document.title,
+      description: document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '',
+      languages: window.__i18n.languages.map((language) => language.label),
+    }));
+    assert.equal(tw.locale, 'zh-Hant', `zh-TW resolved to ${tw.locale}`);
+    assert.equal(tw.title, 'CoSlate — 示範白板', `unexpected title "${tw.title}"`);
+    assert.match(tw.description, /示範/, `the meta description did not follow: "${tw.description}"`);
+    assert.ok(tw.languages.includes('繁體中文'), `menu lacks the endonym: ${tw.languages.join(' / ')}`);
+    // The URL keeps the *preference* (`zh-TW`); the app renders the *resolution*
+    // (`zh-Hant`). Rewriting the request would lose the user's actual intent the
+    // day a `zh-TW` catalog is added.
+    assert.match(tw.url, /lang=zh-TW\b/, `the URL should keep the request: ${tw.url}`);
+
+    // The runtime ships no copy: the text tool's placeholder comes from the catalog.
+    await page.click('[data-testid="tool-text"]');
+    const host = await page.locator('#canvas-host').boundingBox();
+    await page.mouse.click(host.x + 220, host.y + 220);
+    await page.waitForSelector('textarea.coslate-text-overlay', { timeout: 5000 });
+    const field = await page.evaluate(() => {
+      const textarea = document.querySelector('textarea.coslate-text-overlay');
+      return { placeholder: textarea.getAttribute('placeholder'), ariaLabel: textarea.getAttribute('aria-label') };
+    });
+    assert.equal(field.placeholder, '輸入文字…', `text placeholder was "${field.placeholder}"`);
+    assert.equal(field.ariaLabel, '編輯文字', `text accessible name was "${field.ariaLabel}"`);
+    await page.keyboard.press('Escape');
+    await shot(page, 't-zh-hant');
+    return `zh → zh-CN, zh-TW → zh-Hant, field "${field.ariaLabel}"/"${field.placeholder}", ${tw.languages.length} languages`;
+  });
+
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;
 } catch (error) {
   console.error('\nFATAL:', error instanceof Error ? error.stack : error);
@@ -616,7 +986,20 @@ console.log(`screenshots: ${screenshots.length ? screenshots.join(', ') : '(none
 
 await writeFile(
   path.join(ARTIFACTS, 'e2e-report.json'),
-  JSON.stringify({ passed, total: results.length, results, screenshots, pageErrors }, null, 2),
+  JSON.stringify(
+    {
+      passed,
+      total: results.length,
+      staleDist,
+      playwrightEntry: PLAYWRIGHT_ENTRY,
+      chromiumExecutable: CHROMIUM_EXECUTABLE,
+      results,
+      screenshots,
+      pageErrors,
+    },
+    null,
+    2,
+  ),
 );
 
 process.exit(exitCode);

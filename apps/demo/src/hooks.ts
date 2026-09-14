@@ -8,6 +8,10 @@ import type { ToolName, WhiteboardEditor } from '@coslate/konva';
  * devtools) can assert against *real scene state* instead of scraping DOM text.
  * It is a documented public surface of the demo, not an accident: the Playwright
  * suite in `tests/e2e` depends on exactly these names.
+ *
+ * `window.__i18n` is its counterpart for locale — declared and installed by
+ * `installI18n` in `./i18n/index.ts`, with the same "documented, depended on"
+ * status.
  */
 export interface CoSlateTestHook {
   editor: WhiteboardEditor;

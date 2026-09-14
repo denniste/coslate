@@ -1,4 +1,6 @@
+import type { MessageParams } from '@coslate/core';
 import type { ToolName, WhiteboardEditor } from '@coslate/konva';
+import type { MessageKey } from './i18n/catalog-en.js';
 
 /**
  * Keyboard shortcuts.
@@ -6,6 +8,9 @@ import type { ToolName, WhiteboardEditor } from '@coslate/konva';
  * Kept in the application, not in the editor: a host product will want to remap
  * everything, and a runtime that swallows keystrokes is a runtime you cannot
  * embed.
+ *
+ * Status text is reported as a *message key*, never as a finished string, so a
+ * language switch re-renders what the last keystroke said.
  */
 
 const TOOL_KEYS: Record<string, ToolName> = {
@@ -26,7 +31,7 @@ function isTextInput(target: EventTarget | null): boolean {
 
 export interface ShortcutOptions {
   onSaveJson(): void;
-  onStatus(text: string): void;
+  setStatus(key: MessageKey, params?: MessageParams): void;
 }
 
 export function installShortcuts(editor: WhiteboardEditor, options: ShortcutOptions): () => void {
@@ -41,27 +46,29 @@ export function installShortcuts(editor: WhiteboardEditor, options: ShortcutOpti
           event.preventDefault();
           if (event.shiftKey) {
             editor.redo();
-            options.onStatus('Redo');
+            options.setStatus('status.redo');
           } else {
             editor.undo();
-            options.onStatus('Undo');
+            options.setStatus('status.undo');
           }
           return;
         case 'y':
           event.preventDefault();
           editor.redo();
+          options.setStatus('status.redo');
           return;
         case 'c':
           event.preventDefault();
-          options.onStatus(`Copied ${editor.copySelection()} object(s)`);
+          options.setStatus('status.copied', { count: editor.copySelection() });
           return;
-        case 'v':
+        case 'v': {
           event.preventDefault();
-          options.onStatus(`Pasted ${editor.paste().length} object(s)`);
+          options.setStatus('status.pasted', { count: editor.paste().length });
           return;
+        }
         case 'd':
           event.preventDefault();
-          options.onStatus(`Duplicated ${editor.duplicateSelection().length} object(s)`);
+          options.setStatus('status.duplicated', { count: editor.duplicateSelection().length });
           return;
         case 'a':
           event.preventDefault();

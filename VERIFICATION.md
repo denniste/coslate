@@ -9,6 +9,195 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ---
 
+## 0. Re-verification — 2026-09-14
+
+Re-run end to end from a clean working tree (`git status` empty) to confirm the published
+verification still holds. Everything below was executed again; **all of it passed**.
+
+| Step | Result |
+| --- | --- |
+| `pnpm install` | up to date, 48 packages, lockfile passes supply-chain policy (95 entries) |
+| `pnpm typecheck` | PASS — `tsc -b`, 4 projects, zero errors |
+| `pnpm test` | PASS — **97/97 in 6 files**, 25 of them locale |
+| `pnpm build` | PASS — `index.html` 1.16 kB (gzip 0.64), `index-9GoFN6-L.css` 5.26 kB (gzip 1.66), `index-DxVYCmg2.js` 273.02 kB (**gzip 82.82 kB**) |
+| `pnpm e2e` | PASS — **20/20 assertions**, zero page errors |
+
+Deltas from the original staging run are noise, not regressions: the exported PNG is 102 963
+bytes (staging recorded 105 321), the saved JSON is 2473 bytes (was 2476), and the transformer
+resize measured 217.917×148.958 (was 217.9×149.0). The bundle grew from the staging
+`index-VUK4OKk7.js` 76.26 kB gzip to 82.82 kB gzip: ~1.5 kB for the icon toolbar and its tooltip
+layer, ~1 kB for the narrow-viewport rules, and ~4 kB for locale support — the `createI18n` core,
+four catalogs and the language switcher (§ "Icon toolbar", § "Narrow viewports" and § "Locale"
+below). `pnpm dev` and `scripts/rename.sh` were **not** re-run in this pass.
+
+### Two harness defects found and fixed
+
+The suite passed, but it passed *for reasons that would not survive a different machine or a
+stale build*. Both are fixed in `tests/e2e/whiteboard.spec.mjs`:
+
+1. **The browser toolchain was pinned to one host.** The spec hardcoded
+   `/root/.nvm/versions/node/v24.14.1/lib/node_modules/playwright/index.mjs` and
+   `/root/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome`; anywhere else it died at
+   import with an opaque `MODULE_NOT_FOUND`. It now resolves Playwright from
+   `COSLATE_PLAYWRIGHT`, then the local tree, then the `npm root -g` / nvm global prefixes, and
+   resolves Chromium from `COSLATE_CHROMIUM`, then `chromium.executablePath()`, then a scan of
+   the browser cache. `TMPDIR=/dev/shm` is now applied only where `/dev/shm` exists. A bogus
+   explicit override fails immediately with the path it could not find, instead of silently
+   falling through to a different install.
+
+   Verified: with no environment overrides the suite resolved
+   `/root/.nvm/versions/node/v24.14.1/lib/node_modules/playwright/index.mjs` and
+   `/root/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome` on its own;
+   `COSLATE_PLAYWRIGHT=/nope/index.mjs` exits at once with
+   `COSLATE_PLAYWRIGHT points at /nope/index.mjs, which does not exist.`
+
+2. **`pnpm e2e` tested whatever `dist` happened to be on disk.** It served
+   `apps/demo/dist` without building it, so a green run could describe code that had already
+   been changed. The script is now `pnpm build && node tests/e2e/whiteboard.spec.mjs`; a missing
+   `dist` is a hard error naming the fix, and a `dist` older than `packages/*/src` or
+   `apps/demo/src` prints a loud stale-build banner and records `staleDist: true` in
+   `.artifacts/e2e-report.json`.
+
+   Verified: after `touch packages/core/src/store.ts`, a direct
+   `node tests/e2e/whiteboard.spec.mjs` printed
+   `!! apps/demo/dist is older than the sources — this run tests the previous build.` and a full
+   `pnpm e2e` immediately afterwards printed no such warning.
+
+The report JSON now also records `playwrightEntry`, `chromiumExecutable` and `staleDist`, so an
+archived run says which browser and which bundle produced it.
+
+### Icon toolbar (demo chrome)
+
+The demo toolbar was text buttons in four rows. It is now a tldraw-shaped icon toolbar: grouped,
+icon-only controls with the text hint on hover, which is also where the keyboard binding is
+stated.
+
+- `apps/demo/src/icons.ts` — 21 hand-written 24×24 stroke glyphs on `currentColor`, parsed to
+  live SVG nodes with `DOMParser`. No icon font, no sprite sheet, no dependency.
+- `apps/demo/src/tooltip.ts` — one fixed-position tooltip node shared by every control, showing
+  a label plus a `<kbd>` shortcut badge. Native `title` was rejected: it cannot carry the
+  shortcut badge and takes about a second to appear. The hint anchors to the bottom of the
+  toolbar (not the button) so it never covers the style row underneath.
+- `apps/demo/src/chrome.ts` + `style.css` — six labelled groups (`Tools`, `History`, `Zoom`,
+  `Selection`, `File`, `Style`), each a rounded pill; `aria-pressed` still marks the active tool
+  and the active stroke / fill / width. Every existing `data-testid` and all keyboard shortcuts
+  are unchanged, so the rest of the suite exercises the same controls through the new chrome.
+
+Verified by a new end-to-end assertion, **q**, in a real Chromium: all 21 icon-only controls
+exist, each renders an `<svg>` with a non-empty `aria-label` and **no text content**, the zoom
+control still reads as a percentage, and hovering `tool-arrow` shows a hint whose label is
+exactly `Arrow` and whose badge is exactly `A`. Screenshot: `.artifacts/q-toolbar.png`; glyph
+close-ups were captured separately at 3× device scale to judge the drawing itself.
+
+### Narrow viewports
+
+An icon toolbar has a failure mode that a labelled one does not: with labels, controls get
+taller; with icons, a cluster that does not fit simply runs off the edge. Measuring the toolbar
+at nine widths found two real defects:
+
+1. **The style cluster was unreachable below ~440px.** It needed ~484px on one line and it did
+   not wrap, so at 420px it ended at x=494 — past the viewport. Because `body { overflow:
+   hidden }`, those colours and stroke widths could not be reached at all. Groups now carry
+   `flex-wrap: wrap; max-width: 100%`, so a cluster that cannot fit wraps *inside its own pill*
+   instead of crossing an edge.
+2. **The status bar reflowed to a second row below ~950px** to fit the debug hint. The hint now
+   has `flex-basis: 0` — flexbox breaks lines on the *base* size, so a content-sized hint is
+   pushed to its own row rather than shortened — and ellipsizes instead. Below 560px it is
+   hidden outright.
+
+Below 560px the pills also stop paying for themselves (a border and padding each, and an atomic
+pill that misses the next row leaves it half empty), so they drop to a dense wrapped flow with
+whitespace between clusters; below 400px controls tighten to 28px so the eight-tool cluster and
+undo/redo share one line. Nothing is ever hidden — all 21 controls keep their `data-testid` and
+stay clickable at every width.
+
+Measured on the running demo (`.artifacts/narrow-check.mjs`), after the fixes:
+
+| viewport | toolbar rows | toolbar height | canvas height | mode |
+| --- | --- | --- | --- | --- |
+| 1280 / 1024px | 2 | 100px | 693px | grouped pills |
+| 900px | 3 | 146px | 647px | grouped pills |
+| 768 / 640px | 3 | 146px | 647px | grouped pills |
+| 520px | 4 | 151px | 642px | dense |
+| 420px | 4 | 187px | 606px | dense |
+| 360px | 5 | 175px | 600px | dense, compact controls |
+| 320px | 5 | 200px | 575px | dense, compact controls |
+
+Horizontal page overflow is 0 at every width, no group is clipped, the status bar never
+overflows, and every hover hint stays inside the viewport (checked down to 320px).
+
+Verified by a new end-to-end assertion, **r**: at 1024, 768, 560, 480, 420, 360 and 320px it
+asserts that the page does not scroll horizontally, that all seven groups survive, that **every**
+`#toolbar button[data-testid], #toolbar select[data-testid]` is non-collapsed and fully inside the
+viewport, that the status bar does not overflow, and that the toolbar never leaves the canvas less
+than 300px tall. It reported canvas heights `1024:693 768:647 560:678 480:606 420:606 360:600
+320:575`.
+
+### Locale (i18n)
+
+`@coslate/core` gained `i18n.ts`: typed catalogs, BCP 47 canonicalization, RFC 4647 lookup, CLDR
+plural selection, `Intl` number/list formatting and text direction. It contains no user-visible
+string and touches no DOM, so the same catalog can drive a canvas, an HTML chrome or a
+server-rendered thumbnail — and core still depends on nothing but the language built-ins.
+
+The demo ships `en`, `zh-CN`, `zh-Hant` and `ar`, and a language menu in the toolbar. Detection is
+`?lang=` → remembered choice → `navigator.languages` → `en`; a switch writes `<html lang>`,
+`<html dir>`, `document.title` and the meta description, persists under `coslate:locale:v1` and
+rewrites the URL.
+
+**Chinese is two locales, and the resolution is standards-based.** `zh` maximizes to `zh-Hans-CN`
+and resolves to `zh-CN`; `zh-TW` and `zh-HK` maximize to `zh-Hant-…` and resolve to `zh-Hant`.
+That comes from `Intl.Locale.prototype.maximize()` (CLDR likely subtags), not from an alias table,
+and the best-fit step compares shared leading subtags of the *maximized* forms — so `zh` prefers
+`zh-CN` over `zh-Hant` regardless of the order the catalogs are declared in.
+
+**The runtime no longer ships copy.** `@coslate/konva` hardcoded the text tool's placeholder as
+`'Type…'`. That is a localization bug wearing a default, and no host could fix it without patching
+the package; it is now `EditorOptions.textPlaceholder`, accepting a string or a function read when
+the editor opens, and the demo passes `() => i18n.t('text.placeholder')`.
+
+**25 unit tests** (`tests/unit/i18n.test.ts`, taking the suite from 72 to 97) cover canonicalization,
+lookup and truncation, likely-subtag resolution (`zh` vs `zh-TW` vs `zh-HK`, in either declaration
+order), priority order, the unknown-tag fallback, direction including script overrides (`ku-Latn`
+is LTR, `ku-Arab` is not), interpolation, locale-formatted numbers, plural categories in English /
+Chinese / Arabic, per-key fallback, the missing-key contract, and switching with subscribers. Two
+real bugs were found by writing them:
+
+1. **Truncation never fed the extension pass**, so `zh-Hant-TW` matched nothing and fell back to
+   English even though `zh-CN` was available.
+2. **A later exact match beat an earlier preference**: for `['zh-TW', 'ar']` the lookup returned
+   `ar`, because the truncation chain of `zh-TW` was abandoned before `zh` was allowed to extend
+   to `zh-CN`. A requested tag is now exhausted before the next one is considered.
+
+Both were caught by unit tests, not by the browser — which is the point of testing the model
+hard and the product in a browser.
+
+Verified by a new end-to-end assertion, **s**, in a real Chromium: the default locale resolves to
+`en`; selecting `zh-CN` sets `<html lang="zh-CN">`, translates the tool `aria-label` (`画笔 (P)`),
+the group label, the status label and the hover hint (`矩形` + `R`), translates `document.title`,
+keeps the shortcut badge untranslated, and puts `lang=zh-CN` in the URL; selecting `ar` sets
+`dir="rtl"` and **mirrors the layout** — the first tool group moves into the right half of the
+viewport and the language menu into the left half; a full reload restores `ar` and RTL from
+storage; switching back to `en` restores LTR; and a final sweep of every `aria-label` and status
+string asserts none of them is still equal to its own message key (the "untranslated leak" check).
+Screenshot: `.artifacts/s-rtl.png`.
+
+A second assertion, **t**, covers resolution and the runtime copy: loading `?lang=zh` resolves to
+`zh-CN` and loading `?lang=zh-TW` resolves to `zh-Hant` (asserting the title is `CoSlate — 示範白板`,
+the meta description follows, the menu lists the `繁體中文` endonym, and the URL *keeps* the
+requested `zh-TW` — the URL records the preference, the app renders the resolution); and opening
+the text tool reads the placeholder out of the live `<textarea>` and requires `輸入文字…`, proving
+the localized copy reaches the runtime rather than sitting in a constant. Screenshot:
+`.artifacts/t-zh-hant.png`.
+
+---
+
+> ### Original staging record — superseded by §0 above
+>
+> The sections below are the *first* verification run, kept as history: they record 72 unit
+> tests and 16 e2e assertions against the code as it stood then. The current numbers are in §0.
+> Where they disagree, §0 wins.
+
 ## 1. `pnpm install`
 
 ```
@@ -152,3 +341,18 @@ Serves the demo (`<title>CoSlate — demo whiteboard</title>`) and resolves `@co
 - Hit testing is bounding-box based for boxes and path-based for lines; there is no per-pixel
   hit testing and no `evenodd` fill-rule awareness.
 - The e2e suite drives Chromium only; Firefox and WebKit are not covered.
+- **Command labels are English sentences stored in the document.** `object.create`,
+  `object.delete`, `Edit text` and friends are `Command.label` values, and the runtime cannot
+  localize them without baking one language into a saved file. A host that renders an undo
+  history should switch on `command.type` and translate that, treating `label` as provenance.
+- **The demo catalogs are working demonstrations, not reviewed copy.** The Arabic and Traditional
+  Chinese strings are correct to the best of the author's knowledge and are exactly the kind of
+  patch this repo wants, but no native speaker has signed off on them.
+- **RTL is verified for the chrome, not for canvas text.** `<html dir>` flips the toolbar, the
+  style pill and the status line, and the text tool's `<textarea>` inherits it, but RTL text
+  entry, shaping and caret behaviour on the canvas itself are untested.
+- **Direction falls back to a script table on older engines.** `Intl.Locale.prototype.textInfo`
+  is ES2024; where it is missing, a small table decides, so a language/script pair it does not
+  know is assumed LTR.
+- The toolbar's debug-hint text is hidden below 560px by design (it is a developer affordance),
+  and the text tool's placeholder/accessible name are empty when a host supplies neither.
