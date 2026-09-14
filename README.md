@@ -220,6 +220,16 @@ then to the key itself, so nothing is ever silently blank.
 - `window.__scene` and `window.__i18n` debug/test hooks — documented, stable, and used by the e2e
   suite.
 
+## Rules
+
+`docs/INVARIANTS.md` is the contract: the guarantees a host depends on and the rules that keep this
+project worth using. `AGENTS.md` is the one-screen version, for contributors and AI agents alike.
+In short: zero dependencies and no DOM in the core, no third-party engine ever, the camera is never
+in the document, remote application is idempotent and atomic, read-only is structural rather than a
+flag check, and the packages ship no user-visible copy.
+
+The machine-checkable rules are enforced in `tests/unit/invariants.test.ts`.
+
 ## Non-goals for v1
 
 Deliberately **not** built, and not planned for v1.x: AI or MCP integration, collaboration /
@@ -238,6 +248,7 @@ tests/unit/       vitest — model-level tests
 tests/e2e/        Playwright — real browser, real scene assertions
 docs/             scope and origin, the analyses, and the requirements → implementation map
 scripts/rename.sh utility: `bash scripts/rename.sh <new-name> [--display <Name>]`
+AGENTS.md         rules for contributors and AI agents (the short version of the contract)
 ```
 
 ## License

@@ -1,7 +1,7 @@
 # Verification record
 
 > **This file is a log, newest first.** The current state of the project is the
-> [v0.2 host-readiness run](#1-v02--host-readiness-2026-09-15-current) right below: **128 unit tests,
+> [v0.2 host-readiness run](#1-v02--host-readiness-2026-09-15-current) right below: **137 unit tests,
 > 24/24 end-to-end assertions, both demo pages building**. Everything after it is kept as history —
 > §2 is the i18n-era run (20/20) and the staging sections that follow it are the original v0.1
 > record (16/16). Where any of them disagree with the newest, the newest wins.
