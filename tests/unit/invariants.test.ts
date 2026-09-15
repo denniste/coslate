@@ -1,5 +1,5 @@
 /**
- * Invariants — the machine-checkable half of `docs/INVARIANTS.md`.
+ * Invariants — the machine-checkable half of `.design/INVARIANTS.md`.
  *
  * Most of these read source files and manifests on purpose. The rules they protect are
  * architectural: what may depend on what, what may appear in a wire message, what may ship as copy.
@@ -146,7 +146,7 @@ describe('invariants: the embedded UI', () => {
 
   it('I3 — no chrome control replaces the document (it must go through the command pipeline)', () => {
     // The regression this guards: the clear button called editor.clear(), which resets the document
-    // outside the pipeline — so it was neither undoable nor broadcast (0.2.1, see docs/bug-log.md).
+    // outside the pipeline — so it was neither undoable nor broadcast (0.2.1, see .design/bug-log.md).
     const forbidden = [/editor\.clear\(\)/, /store\.reset\(/, /\.setScene\(/];
     const offenders = filesUnder(join(ROOT, 'packages/ui/src'))
       .filter((file) => forbidden.some((pattern) => pattern.test(stripComments(readFileSync(file, 'utf8')))))

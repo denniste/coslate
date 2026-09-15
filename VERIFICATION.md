@@ -1,5 +1,10 @@
 # Verification record
 
+> **History note (2026-09-15).** The public repository history was rewritten to retire the
+> unconverged design documents from it (they now live in the gitignored `.design/` directory).
+> Every commit hash cited below refers to the lineage *before* that rewrite and is kept as
+> plain history, not as a resolvable reference.
+
 > **This file is a log, newest first.** The current state of the project is the
 > [0.2.1 run (bug-log O1/O2/O3 + toolbar coverage)](#1-021--bug-log-o1o2o3-and-mutating-control-coverage-2026-09-15-current) right below:
 > **148 unit tests, 29/29 end-to-end assertions, both demo pages building**. Everything after it is
@@ -18,7 +23,7 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ## 1. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15, current)
 
-Scope: the three open issues in `docs/bug-log.md`, plus the page-level coverage the clear-button
+Scope: the three open issues in `.design/bug-log.md`, plus the page-level coverage the clear-button
 regression showed was missing. All manifests at `0.2.1`, peers `^0.2.1` (the fifth manifest,
 `apps/demo`, is private and unpublishable but keeps the same number).
 
@@ -53,7 +58,7 @@ Evidence, per the acceptance standard:
 ## 2. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
 
 Scope: P1 (version reflects the breaking release) and R11 (the visual contract: host-settable page
-background and grid, PNG export follows), per `docs/requirements.md` §1–§2. Status rows and the
+background and grid, PNG export follows), per `.design/requirements.md` §1–§2. Status rows and the
 requirement-by-requirement mapping were updated in the same commits. Open item **O1 was deliberately
 left open**: the minimal "report via `onError`" change would also misreport an empty-but-valid frame
 (`{}`, `{added: []}`) as corrupt, and that boundary deserves its own small design; the documented
@@ -82,7 +87,7 @@ R11 evidence, as the acceptance standard requires:
 ## 3. v0.2 — host-readiness (2026-09-15)
 
 Requirement source: CoStage's `docs/COSLATE-REPLACEMENT-REQUIREMENTS.md` (R1–R10, C1–C8, D1–D4).
-Requirement-by-requirement mapping: [`docs/requirements-mapping.md`](./docs/requirements-mapping.md).
+Requirement-by-requirement mapping: `.design/requirements-mapping.md` (local design docs).
 
 | Step | Result |
 | --- | --- |

@@ -2,7 +2,7 @@
  * Page appearance: the visual contract between the runtime and its host.
  *
  * The page background and the grid are **view state, never document state** —
- * the same rule that keeps the camera out of `Scene` (see `docs/INVARIANTS.md`
+ * the same rule that keeps the camera out of `Scene` (see `.design/INVARIANTS.md`
  * I4). A shared document must not carry one participant's taste in grid lines,
  * and a stored baseline must not restore somebody else's page colour. These
  * values exist as constructor options and renderer settings only; they never

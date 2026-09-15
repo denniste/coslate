@@ -57,8 +57,9 @@ changes an upgrade to 0.2 needs to know about:
   field rather than a built-in English string.
 
 Host-facing API changes are always accompanied by a version bump and a note here and in
-`CHANGELOG.md`. Publishing the packages is `pnpm publish:packages`; the procedure, the one-time
-npm-org setup and the artifact smoke test are in [docs/publishing.md](./docs/publishing.md).
+`CHANGELOG.md`. Publishing the packages is `pnpm publish:packages` from a clean, green tree; the
+maintainer runbook (one-time npm-org setup, web-auth 2FA flow, artifact smoke test) lives in the
+repository's local design docs and is not part of the public tree.
 
 ### Embedding it
 
@@ -284,15 +285,16 @@ same values on its own container. The constants live in `@coslate/core`
 
 ## Rules
 
-`docs/INVARIANTS.md` is the contract: the guarantees a host depends on and the rules that keep this
-project worth using. `AGENTS.md` is the one-screen version, for contributors and AI agents alike.
-In short: zero dependencies and no DOM in the core, no third-party engine ever, the camera is never
-in the document, remote application is idempotent and atomic, read-only is structural rather than a
-flag check, and the packages ship no user-visible copy.
+`AGENTS.md` is the contract in one screen: the guarantees a host depends on and the rules that keep
+this project worth using. In short: zero dependencies and no DOM in the core, no third-party
+engine ever, the camera is never in the document, remote application is idempotent and atomic,
+read-only is structural rather than a flag check, and the packages ship no user-visible copy. The
+machine-checkable half is enforced in `tests/unit/invariants.test.ts`; the full invariant set,
+the requirement documents and the bug log live in the maintainers' local design docs (`.design/`,
+gitignored — they are working documents, not published documentation).
 
-`docs/requirements.md` states what the runtime must provide for its first host, together
-with the acceptance standard a reviewer applies. The machine-checkable rules are enforced in
-`tests/unit/invariants.test.ts`.
+User-facing documentation lives in [docs/](./docs/README.md): what the packages are, how to
+install them, and how to embed the editor, the viewer and the chrome.
 
 ## Non-goals for v1
 
@@ -310,7 +312,7 @@ packages/ui/      @coslate/ui     — embeddable chrome: toolbar, style, zoom, t
 apps/demo/        vanilla TypeScript + Vite demo: the editor page and the viewer page
 tests/unit/       vitest — model-level tests
 tests/e2e/        Playwright — real browser, real scene assertions
-docs/             scope and origin, the analyses, and the requirements → implementation map
+docs/             user documentation: what it is, how to install it, how to embed it
 scripts/rename.sh utility: `bash scripts/rename.sh <new-name> [--display <Name>]`
 AGENTS.md         rules for contributors and AI agents (the short version of the contract)
 ```

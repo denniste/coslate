@@ -2,11 +2,13 @@
 
 Instructions for anyone — human or AI agent — changing CoSlate.
 
-**First, read `docs/INVARIANTS.md` and `docs/requirements.md`.** The first is the contract: the
+**First, read `.design/INVARIANTS.md` and `.design/requirements.md`** (the `.design/` directory is
+local-only: it is gitignored and does not exist in a public clone). The first is the contract: the
 guarantees hosts depend on and the
 rules that keep it worth using. The second states what the runtime must provide for its first
-host, with the acceptance standard a reviewer applies. `docs/scope-and-origin.md` explains why it exists;
-`ARCHITECTURE.md` explains how it is put together.
+host, with the acceptance standard a reviewer applies. `.design/scope-and-origin.md` explains why it exists;
+`ARCHITECTURE.md` explains how it is put together. Public contributors without `.design/` can work
+from this file — it is the one-screen version of the contract.
 
 ## The non-negotiables, in one screen
 
@@ -49,15 +51,15 @@ events and asserts on real scene state. If you add behaviour, add a page-level a
 - **Changing a host-facing API** (`createSceneViewer`, `WhiteboardEditor`, `SceneStore`, `serialize`,
   `@coslate/ui`, `createI18n`): bump the version and note it in `README.md`/`ARCHITECTURE.md`.
 - **Adding a dependency**: check the licence rule first; a runtime dependency in `core` needs a
-  decision recorded in `docs/INVARIANTS.md`.
-- **Changing a rule**: edit `docs/INVARIANTS.md` in the same commit and explain why in the message.
-- **Publishing**: `pnpm publish:packages` from a clean, green tree — see `docs/publishing.md`.
+  decision recorded in `.design/INVARIANTS.md`.
+- **Changing a rule**: edit `.design/INVARIANTS.md` in the same commit and explain why in the message.
+- **Publishing**: `pnpm publish:packages` from a clean, green tree — see `.design/publishing.md`.
   All five manifests move together; never publish a tree that has not passed the full suite.
 
 ## Things this project deliberately refuses
 
 AI/MCP inside the runtime, collaboration/CRDT inside the core, formulas, pages, images, embeds,
 React bindings, runtime schema libraries, runtime plugin loading, light themes as a runtime concern,
-and being a product. See `ARCHITECTURE.md` §9 and `docs/scope-and-origin.md` for the reasoning.
+and being a product. See `ARCHITECTURE.md` §9 and `.design/scope-and-origin.md` for the reasoning.
 If a request pulls toward one of these, the answer is a *host* or *separate package*, not a change
 to the core.
