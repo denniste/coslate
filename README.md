@@ -45,7 +45,7 @@ Node 20+ and pnpm 9+.
 
 ### Versions and breaking changes
 
-Current release: **0.2.0** — see [CHANGELOG.md](./CHANGELOG.md) for the full list. The two breaking
+Current release: **0.2.1** — see [CHANGELOG.md](./CHANGELOG.md) for the full list. The two breaking
 changes an upgrade to 0.2 needs to know about:
 
 - **`Scene` is v2 and the camera left the document.** The serialized document no longer carries a
@@ -78,6 +78,12 @@ editor.undo();
 const json = editor.toJSON();          // portable scene document
 editor.loadJSON(json);
 console.log(editor.getScene().order);  // authoritative paint order
+
+// Two different "clear"s, on purpose:
+editor.clearAll();        // wipe the board as ONE undoable step (clearing a room)
+editor.resetDocument();   // destructive reset for "open a different board" (history dropped)
+// `clear()` still compiles as a deprecated alias of resetDocument(); new code should
+// say which of the two it means.
 ```
 
 Every mutation goes through a command, so the same API works for tools, menus, keyboard

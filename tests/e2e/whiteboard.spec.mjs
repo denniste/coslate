@@ -1657,11 +1657,11 @@ try {
 
       // front / back: the paint order moves; one undo restores it exactly.
       const orderBefore = await order();
-      await select(ids[0]);
+      await select(ids[1]);
       await page.click('[data-testid="back"]');
       await page.waitForTimeout(120);
       let reordered = await order();
-      assert.equal(reordered[0], ids[0], 'send-to-back moved stroke A first');
+      assert.equal(reordered[0], ids[1], 'send-to-back moved stroke B first');
       await page.evaluate(() => window.__scene.undo());
       const afterBack = await order();
       assert.deepEqual(afterBack, orderBefore, `undo after back: before=${JSON.stringify(orderBefore)} after=${JSON.stringify(afterBack)}`);

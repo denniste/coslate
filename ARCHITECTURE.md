@@ -456,6 +456,7 @@ annotations live, which is why it is free-form today.
 | --- | --- | --- |
 | **v0.1** | Scene model, command protocol + JSON Patch, transactions, bounded undo/redo, viewport math, serialization with migrations, Konva renderer, six object types, eight tools, style system, locale primitives, PNG/JSON export, demo app, unit + Playwright suites | **shipped** |
 | **v0.2 — host-ready** | Camera out of the document (v2 + migration), object-state records with idempotent and atomic remote apply, read-only projection (`createSceneViewer`) and editor read-only gating, undoable `clearAll`, baseline semantics (`isSceneEmpty` / `readBaseline`), `@coslate/ui` with theme + host-injected strings + hide-all-chrome, `getSummary()` status push-back, controllable page background and grid (the visual contract) | **shipped** |
+| **v0.2.1** | Toolbar clear button goes through `clearAll()` (the command pipeline), `applyDelta` reports corrupt frames via `onError`, chrome draws the language control only when the host ships ≥ 2 languages, `resetDocument()` replaces the footgun-named `clear()` (kept as a deprecated alias) | **shipped** |
 | **v1.1** | Grouping (`parentId` is already reserved), lock/hide UI, copy/paste across documents, image object, alignment guides, snap-to-grid, multi-page documents, `store.beginTransaction()` for long-lived gestures | planned |
 | **v2** | Object Plugin registry, domain packs, optional sync package built on the command protocol, AI client as a first-class command producer, alternative (SVG/headless) renderers | planned |
 

@@ -13,7 +13,31 @@ anything may still change, but breaking changes are called out explicitly.
   through the command pipeline, so it was **not undoable and not broadcast** — the person pressing
   it lost the board locally (and their history) while every other participant kept the old drawing.
   It now calls `clearAll()`, which is one transaction: undoable, and delivered to peers like any
-  other edit (R7). The button previously had no page-level assertion; it has one now.
+  other edit (R7). The button previously had no page-level assertion; it has one now (e2e `aa`).
+- **`store.applyDelta` could not tell a duplicate frame from a corrupt one** (bug-log O1). Both
+  returned `false`, and a corrupt frame never reached `onError`. `applyDelta` now reports a corrupt
+  frame through `onError` (a `TypeError`, context `'applyDelta'`); a retransmitted duplicate or an
+  empty-but-valid frame (`{}`, `{added: []}`) still returns `false` in silence, and the call never
+  throws (R4). A host can count genuinely dropped frames without pre-validating.
+- **The chrome drew a language control when there was nothing to choose** (bug-log O2). The
+  language `<select>` is now built only when `i18n.languages.length >= 2`, so a host shipping one
+  language (or none) no longer gets a visible, empty, dead control. Proven by e2e `ab`.
+
+### Changed
+
+- **`WhiteboardEditor` gains `resetDocument()`, the unambiguous name for the destructive reset**
+  (bug-log O3). The one-word difference between `clear()` (reset + drop history, "open a different
+  board") and `clearAll()` (one undoable transaction) is how the toolbar bug above happened.
+  `clear()` remains as a `@deprecated` alias so 0.2.x embeds keep compiling; **removal is deferred
+  to the next breaking release**. `clearAll()` is unchanged. The demo's test hook exposes both
+  names. Documented in `README.md` and `ARCHITECTURE.md`.
+
+### Added
+
+- **Page-level proof for every document-mutating toolbar control** (e2e `ac`): delete, duplicate,
+  send-to-back, bring-to-front, stroke colour, stroke width and a text commit are each driven with
+  real input, asserted to change the document, and asserted to be reverted by exactly one undo —
+  the same standard e2e `aa` set for the clear button.
 
 ## 0.2.0 — host-ready
 
