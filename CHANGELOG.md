@@ -4,6 +4,17 @@ All notable changes to CoSlate are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver while `0.x` —
 anything may still change, but breaking changes are called out explicitly.
 
+## 0.2.1 — the toolbar's clear button was not an edit
+
+### Fixed
+
+- **The chrome's "clear the board" button called `clear()` instead of `clearAll()`.** `clear()` is
+  the destructive reset kept for "open a different board": it replaces the document without going
+  through the command pipeline, so it was **not undoable and not broadcast** — the person pressing
+  it lost the board locally (and their history) while every other participant kept the old drawing.
+  It now calls `clearAll()`, which is one transaction: undoable, and delivered to peers like any
+  other edit (R7). The button previously had no page-level assertion; it has one now.
+
 ## 0.2.0 — host-ready
 
 The release that makes the runtime embeddable by its first host. Two changes are **breaking**;

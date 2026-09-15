@@ -1524,6 +1524,47 @@ try {
     return 'viewer defaults match the editor, config repaints, projected document stays empty';
   });
 
+  // --------------------- aa. the toolbar's clear button is an ordinary edit (R7)
+  await check(
+    'aa',
+    'the clear button empties the board through the command pipeline: one undo restores it',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+
+      // A real stroke with the pen tool, so there is something to clear.
+      await page.click('[data-testid="tool-pen"]');
+      const box = await page.locator('.coslate-canvas-host canvas').first().boundingBox();
+      const cx = box.x + box.width * 0.4;
+      const cy = box.y + box.height * 0.4;
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      for (let i = 0; i < 12; i += 1) await page.mouse.move(cx + i * 8, cy + i * 4);
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+
+      const before = await page.evaluate(() => window.__scene.getScene().order.length);
+      assert.ok(before > 0, 'the pen should have left something to clear');
+
+      // The regression this guards: the button used to call clear(), which replaces the document
+      // without a command — locally destructive, invisible to peers, and impossible to undo.
+      await page.click('[data-testid="clear"]');
+      await page.waitForTimeout(250);
+      const cleared = await page.evaluate(() => window.__scene.getScene().order.length);
+      assert.equal(cleared, 0, 'the clear button must empty the board');
+
+      const undone = await page.evaluate(() => window.__scene.undo());
+      assert.equal(undone, true, 'clearing must be undoable — that is what proves it used the pipeline');
+      const restored = await page.evaluate(() => window.__scene.getScene().order.length);
+      assert.equal(restored, before, `one undo should restore all ${before} object(s), saw ${restored}`);
+
+      await page.click('[data-testid="clear"]');
+      await page.waitForTimeout(200);
+      await shot(page, 'aa-clear-button');
+      return `cleared ${before} object(s) via the button; one undo restored them`;
+    },
+  );
+
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;
 } catch (error) {
   console.error('\nFATAL:', error instanceof Error ? error.stack : error);

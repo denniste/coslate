@@ -261,7 +261,10 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
       testId: 'clear',
       icon: 'clearBoard',
       label: () => t('file.clear'),
-      onClick: () => editor.clear(),
+      // clearAll, not clear: clear() is the destructive reset kept for "open a different board"
+      // — it bypasses the command pipeline, so it is neither undoable nor broadcast. A toolbar
+      // button has to be an ordinary edit that peers receive (R7).
+      onClick: () => editor.clearAll(),
     }),
     fileInput,
   );
