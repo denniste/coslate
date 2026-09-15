@@ -1,0 +1,35 @@
+name: Publish Packages
+
+on:
+  release:
+    types: [published] # 当你在 GitHub 上点 Draft a new release 发布时触发
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # 关键：让 npm 通过 OIDC 验证身份（provenance，无需 2FA 密钥）
+    steps:
+      - uses: actions/checkout@v4
+
+      # packageManager 字段已声明 pnpm@12.3.4，action-setup 自动读取
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      # 这是 pnpm monorepo：没有 package-lock.json，npm ci 不可用
+      - run: pnpm install --frozen-lockfile
+
+      # 发布 gate，同 docs/publishing.md：typecheck + test + fresh build 全绿才发。
+      # e2e 刻意不在 CI 跑（需要预装 Chromium），发版前在本地跑。
+      - run: pnpm typecheck && pnpm test && pnpm build
+
+      # core → konva → ui 拓扑序发布，private 包自动跳过。
+      # 前提：在 npmjs.com 的每个包上配置 trusted publisher
+      # （GitHub 仓库 + 本 workflow 文件），否则 OIDC 换不到令牌。
+      - run: pnpm --filter './packages/*' publish --provenance --access public --no-git-checks
