@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "e2e": "pnpm build && node tests/e2e/whiteboard.spec.mjs",
+    "publish:packages": "pnpm typecheck && pnpm test && pnpm build && pnpm --filter './packages/*' publish",
     "rename": "bash scripts/rename.sh"
   },
   "devDependencies": {

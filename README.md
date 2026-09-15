@@ -57,7 +57,8 @@ changes an upgrade to 0.2 needs to know about:
   field rather than a built-in English string.
 
 Host-facing API changes are always accompanied by a version bump and a note here and in
-`CHANGELOG.md`.
+`CHANGELOG.md`. Publishing the packages is `pnpm publish:packages`; the procedure, the one-time
+npm-org setup and the artifact smoke test are in [docs/publishing.md](./docs/publishing.md).
 
 ### Embedding it
 

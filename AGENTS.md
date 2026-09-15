@@ -51,6 +51,8 @@ events and asserts on real scene state. If you add behaviour, add a page-level a
 - **Adding a dependency**: check the licence rule first; a runtime dependency in `core` needs a
   decision recorded in `docs/INVARIANTS.md`.
 - **Changing a rule**: edit `docs/INVARIANTS.md` in the same commit and explain why in the message.
+- **Publishing**: `pnpm publish:packages` from a clean, green tree — see `docs/publishing.md`.
+  All five manifests move together; never publish a tree that has not passed the full suite.
 
 ## Things this project deliberately refuses
 
