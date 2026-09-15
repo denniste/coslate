@@ -1,6 +1,6 @@
 {
   "name": "@coslate/demo",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "CoSlate demo: an editor page and a read-only viewer page, built with vanilla TypeScript + Vite on @coslate/core, @coslate/konva and @coslate/ui.",
   "license": "MIT",

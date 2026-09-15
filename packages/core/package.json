@@ -1,6 +1,6 @@
 {
   "name": "@coslate/core",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "CoSlate core: the scene model, command protocol, undo history, viewport math and serialization. Zero runtime dependencies, no DOM.",
   "license": "MIT",
   "author": "CoSlate contributors",
