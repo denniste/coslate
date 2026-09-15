@@ -14,7 +14,8 @@ host, with the acceptance standard a reviewer applies. `docs/scope-and-origin.md
 2. The only runtime dependency in the published packages is **`konva`** (MIT). Nothing
    non-open-source may ship, ever — that is why this project exists.
 3. The renderer **never mutates the scene**; every mutation is a command.
-4. The **camera is never in the serialized document**.
+4. The **camera is never in the serialized document** — and neither is any view configuration
+   (page background, grid).
 5. The wire format is **object state (upsert), never patches**; remote application is **idempotent
    and atomic**; nothing received from a peer is broadcast back or pushed onto the undo stack.
 6. `transient` commands are never in history and never broadcast.

@@ -6,6 +6,9 @@
  * somebody else's editor.
  */
 
+export type { GridAppearance } from './appearance.js';
+export { DEFAULT_BACKGROUND, DEFAULT_GRID, resolveGrid } from './appearance.js';
+
 export type {
   Bounds,
   EllipseData,

@@ -54,9 +54,12 @@ export { TextTool } from './tools/text.js';
 export {
   createStore,
   createEmptyScene,
+  DEFAULT_BACKGROUND,
+  DEFAULT_GRID,
   deserialize,
+  resolveGrid,
   serialize,
   screenToWorld,
   worldToScreen,
 } from '@coslate/core';
-export type { Scene, SceneObject, SceneStore, Viewport } from '@coslate/core';
+export type { GridAppearance, Scene, SceneObject, SceneStore, Viewport } from '@coslate/core';

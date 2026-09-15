@@ -1,5 +1,13 @@
 import Konva from 'konva';
-import { worldToScreen, type Id, type Scene, type Viewport } from '@coslate/core';
+import {
+  DEFAULT_BACKGROUND,
+  resolveGrid,
+  worldToScreen,
+  type GridAppearance,
+  type Id,
+  type Scene,
+  type Viewport,
+} from '@coslate/core';
 import type { SceneStore } from '@coslate/core';
 import { contentBounds } from './geometry.js';
 import { createObjectNode, updateObjectNode } from './nodes.js';
@@ -14,6 +22,10 @@ import { createObjectNode, updateObjectNode } from './nodes.js';
  *  - the three layers are fixed: background grid, content, overlay. Tools draw
  *    previews on the overlay layer so a half-finished gesture can never be
  *    mistaken for document content.
+ *
+ * The page layer (background + grid) is **view configuration**, not document
+ * state: a host sets it through the options here or at runtime, and nothing of
+ * it can reach a serialized scene.
  */
 
 export interface SceneRendererOptions {
@@ -21,8 +33,10 @@ export interface SceneRendererOptions {
   container: HTMLDivElement;
   width: number;
   height: number;
-  /** Page background painted under the grid; also the PNG export background. */
+  /** Page background painted under the grid; also the PNG export background. Defaults to {@link DEFAULT_BACKGROUND}. */
   background?: string;
+  /** Grid look; unspecified fields keep {@link DEFAULT_GRID}. Pass `{ visible: false }` for an ungridded page. */
+  grid?: Partial<GridAppearance>;
 }
 
 export interface ExportOptions {
@@ -35,7 +49,6 @@ export interface ExportOptions {
 
 const GRID_TARGET_MIN = 24;
 const GRID_TARGET_MAX = 96;
-const GRID_BASE = 20;
 
 export class SceneRenderer {
   public readonly stage: Konva.Stage;
@@ -44,18 +57,26 @@ export class SceneRenderer {
   private readonly contentLayer: Konva.Layer;
   private readonly overlayLayer: Konva.Layer;
   private readonly background: Konva.Rect;
-  private readonly grid: Konva.Shape;
+  private readonly gridShape: Konva.Shape;
   private readonly nodes = new Map<Id, Konva.Shape>();
 
-  private readonly backgroundFill: string;
+  private backgroundFill: string;
+  private grid: GridAppearance;
   private scene: Scene | null = null;
   private viewport: Viewport = { x: 0, y: 0, scale: 1 };
+  /**
+   * The camera an in-flight export is drawn with, while it is in flight. The
+   * grid is world-anchored, so the snapshot must draw it for the camera the
+   * export uses — not for whichever camera happens to be live.
+   */
+  private exportViewport: Viewport | null = null;
   private orderKey = '';
   private unsubscribe: (() => void) | null = null;
   private destroyed = false;
 
   constructor(options: SceneRendererOptions) {
-    this.backgroundFill = options.background ?? '#14161a';
+    this.backgroundFill = options.background ?? DEFAULT_BACKGROUND;
+    this.grid = resolveGrid(options.grid);
 
     this.stage = new Konva.Stage({
       container: options.container,
@@ -77,7 +98,7 @@ export class SceneRenderer {
       perfectDrawEnabled: false,
     });
 
-    this.grid = new Konva.Shape({
+    this.gridShape = new Konva.Shape({
       x: 0,
       y: 0,
       width: options.width,
@@ -87,7 +108,7 @@ export class SceneRenderer {
       sceneFunc: (context, shape) => this.drawGrid(context, shape),
     });
 
-    this.gridLayer.add(this.background, this.grid);
+    this.gridLayer.add(this.background, this.gridShape);
     this.stage.add(this.gridLayer, this.contentLayer, this.overlayLayer);
   }
 
@@ -152,8 +173,8 @@ export class SceneRenderer {
     this.stage.height(height);
     this.background.width(width);
     this.background.height(height);
-    this.grid.width(width);
-    this.grid.height(height);
+    this.gridShape.width(width);
+    this.gridShape.height(height);
     this.batchDraw();
   }
 
@@ -217,6 +238,53 @@ export class SceneRenderer {
     return this.viewport;
   }
 
+  // --------------------------------------------------------------- appearance
+
+  /** The page background — the colour painted under everything, including the PNG export. */
+  getBackground(): string {
+    return this.backgroundFill;
+  }
+
+  /** The grid exactly as it is configured right now. */
+  getGrid(): Readonly<GridAppearance> {
+    return this.grid;
+  }
+
+  /**
+   * Repaint the page in another colour.
+   *
+   * View configuration, not document state: nothing here can reach a serialized
+   * scene. An unusable value keeps the current colour rather than throwing — a
+   * page must not fail because a theming string was wrong.
+   */
+  setBackground(color: string): void {
+    if (!isUsableColor(color) || color === this.backgroundFill) return;
+    this.backgroundFill = color;
+    this.background.fill(color);
+    this.batchDraw();
+  }
+
+  /**
+   * Restyle the grid, or switch it off (`{ visible: false }`).
+   *
+   * Merges over the current configuration, so a host that only wants a white
+   * board's faint grey lines passes `{ color }` and nothing else. Redraws the
+   * page layer; PNG export follows, because it paints this same layer.
+   */
+  setGrid(partial: Partial<GridAppearance>): void {
+    const next = resolveGrid(partial, this.grid);
+    if (
+      next.visible === this.grid.visible &&
+      next.color === this.grid.color &&
+      next.majorColor === this.grid.majorColor &&
+      next.spacing === this.grid.spacing
+    ) {
+      return;
+    }
+    this.grid = next;
+    this.batchDraw();
+  }
+
   batchDraw(): void {
     if (this.destroyed) return;
     this.gridLayer.batchDraw();
@@ -242,6 +310,10 @@ export class SceneRenderer {
           y: -options.viewport.y * options.viewport.scale,
         });
       }
+      // The grid follows the camera the snapshot borrows, so the exported grid
+      // shows the spacing that camera would draw on screen. The background and
+      // grid *configuration* is shared by definition — it is this same page layer.
+      this.exportViewport = options.viewport ?? { ...this.viewport };
       this.overlayLayer.visible(false);
       this.stage.draw();
       return this.stage.toDataURL({
@@ -251,6 +323,7 @@ export class SceneRenderer {
     } finally {
       // The camera is document state, so the snapshot borrows the transform and
       // puts it back exactly as it was. `this.viewport` is never touched.
+      this.exportViewport = null;
       this.overlayLayer.visible(previousOverlay);
       this.contentLayer.scale(previousScale);
       this.contentLayer.position(previousPosition);
@@ -290,12 +363,14 @@ export class SceneRenderer {
   }
 
   private drawGrid(context: Konva.Context, shape: Konva.Shape): void {
+    if (!this.grid.visible) return;
+    const viewport = this.exportViewport ?? this.viewport;
     const width = shape.width();
     const height = shape.height();
-    const { scale } = this.viewport;
+    const { scale } = viewport;
     if (width <= 0 || height <= 0 || !Number.isFinite(scale) || scale <= 0) return;
 
-    let step = GRID_BASE;
+    let step = this.grid.spacing;
     if (step * scale < GRID_TARGET_MIN) {
       step *= 2 ** Math.ceil(Math.log2(GRID_TARGET_MIN / (step * scale)));
     } else if (step * scale > GRID_TARGET_MAX) {
@@ -303,8 +378,8 @@ export class SceneRenderer {
     }
     if (!Number.isFinite(step) || step <= 0) return;
 
-    const worldLeft = this.viewport.x;
-    const worldTop = this.viewport.y;
+    const worldLeft = viewport.x;
+    const worldTop = viewport.y;
     const worldRight = worldLeft + width / scale;
     const worldBottom = worldTop + height / scale;
 
@@ -314,7 +389,7 @@ export class SceneRenderer {
     context.save();
     context.setLineDash([]);
     context.lineWidth = 1;
-    context.strokeStyle = 'rgba(255,255,255,0.05)';
+    context.strokeStyle = this.grid.color;
     context.beginPath();
     for (let x = startX; x <= worldRight; x += step) {
       const sx = Math.round((x - worldLeft) * scale) + 0.5;
@@ -333,7 +408,7 @@ export class SceneRenderer {
     const major = step * 5;
     const majorStartX = Math.floor(worldLeft / major) * major;
     const majorStartY = Math.floor(worldTop / major) * major;
-    context.strokeStyle = 'rgba(255,255,255,0.09)';
+    context.strokeStyle = this.grid.majorColor;
     context.beginPath();
     for (let x = majorStartX; x <= worldRight; x += major) {
       const sx = Math.round((x - worldLeft) * scale) + 0.5;
@@ -348,4 +423,9 @@ export class SceneRenderer {
     context.stroke();
     context.restore();
   }
+}
+
+/** A colour a page can be painted in; anything else keeps the current one. */
+function isUsableColor(value: string): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
 }

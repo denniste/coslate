@@ -1,10 +1,11 @@
 # Verification record
 
 > **This file is a log, newest first.** The current state of the project is the
-> [v0.2 host-readiness run](#1-v02--host-readiness-2026-09-15-current) right below: **137 unit tests,
-> 24/24 end-to-end assertions, both demo pages building**. Everything after it is kept as history —
-> §2 is the i18n-era run (20/20) and the staging sections that follow it are the original v0.1
-> record (16/16). Where any of them disagree with the newest, the newest wins.
+> [0.2.0 run (P1 + R11)](#1-020--preconditions-p1--p2-and-r11-2026-09-15-current) right below:
+> **144 unit tests, 26/26 end-to-end assertions, both demo pages building**. Everything after it is
+> kept as history — §2 is the v0.2 host-readiness run (137 tests, 24/24), §3 the i18n-era run
+> (20/20) and the staging sections that follow it are the original v0.1 record (16/16). Where any
+> of them disagree with the newest, the newest wins.
 
 Everything below was executed in this directory on the staging machine. Raw output for the
 end-to-end run is in `.artifacts/e2e-report.json`; screenshots are in `.artifacts/`.
@@ -15,7 +16,36 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ---
 
-## 1. v0.2 — host-readiness (2026-09-15, current)
+## 1. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15, current)
+
+Scope: P1 (version reflects the breaking release) and R11 (the visual contract: host-settable page
+background and grid, PNG export follows), per `docs/requirements.md` §1–§2. Status rows and the
+requirement-by-requirement mapping were updated in the same commits. Open item **O1 was deliberately
+left open**: the minimal "report via `onError`" change would also misreport an empty-but-valid frame
+(`{}`, `{added: []}`) as corrupt, and that boundary deserves its own small design; the documented
+`normalizeDelta` pre-check remains the host workaround.
+
+| Step | Result |
+| --- | --- |
+| `pnpm typecheck` | PASS — 5 TypeScript projects (core, konva, ui, demo, tests), zero errors |
+| `pnpm test` | PASS — **144/144 in 9 files** (7 new in `appearance.test.ts`) |
+| `pnpm e2e` | PASS — **26/26 assertions** (a–z; new `y` editor visual contract, `z` viewer visual contract), `pageErrors = []` |
+
+R11 evidence, as the acceptance standard requires:
+
+- **Page-level (the bar).** e2e `y` samples real pixels of the page canvas through the sequence
+  default dark+grid → white/ungridded (exactly one colour) → restyled grid draws its configured
+  colours → 10× spacing draws measurably fewer lines → the PNG **export** carries the white
+  background and the configured grid, and loses the grid when it is disabled →
+  `window.__scene.toJSON()` is **byte-identical** before and after every appearance change.
+  e2e `z` repeats the contract on the read-only viewer page, whose projected scene stays empty.
+- **Unit.** `tests/unit/appearance.test.ts` pins the documented defaults, the `resolveGrid`
+  fallbacks, update-merging over the current grid, and that no appearance value can reach a
+  serialized scene.
+
+---
+
+## 2. v0.2 — host-readiness (2026-09-15)
 
 Requirement source: CoStage's `docs/COSLATE-REPLACEMENT-REQUIREMENTS.md` (R1–R10, C1–C8, D1–D4).
 Requirement-by-requirement mapping: [`docs/requirements-mapping.md`](./docs/requirements-mapping.md).
@@ -80,7 +110,7 @@ editor — that is the chrome, and an audience does not download it.
 
 ---
 
-## 2. Re-verification — 2026-09-14 (i18n era, superseded)
+## 3. Re-verification — 2026-09-14 (i18n era, superseded)
 
 > Historical: this run predates v0.2 below. It recorded 97 unit tests and 20 e2e assertions; the
 > v0.2 run has 128 and 24. Kept because it is the evidence for the icon toolbar, the narrow-viewport
@@ -265,7 +295,7 @@ the text tool reads the placeholder out of the live `<textarea>` and requires `�
 the localized copy reaches the runtime rather than sitting in a constant. Screenshot:
 `.artifacts/t-zh-hant.png`.
 
-## 3. Original staging record — the v0.1 run (superseded)
+## 4. Original staging record — the v0.1 run (superseded)
 
 > The first verification run, kept as history: 72 unit tests and 16 e2e assertions against
 > the code as it stood at 0.1.0. Superseded by §1 in every respect.

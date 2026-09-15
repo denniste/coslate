@@ -1,4 +1,4 @@
-import type { Id, Point, Scene, SceneDelta, SceneStore, Viewport } from '@coslate/core';
+import type { GridAppearance, Id, Point, Scene, SceneDelta, SceneStore, Viewport } from '@coslate/core';
 import type { EditorStyle, EditorSummary, ToolName, WhiteboardEditor } from '@coslate/konva';
 
 /**
@@ -52,6 +52,12 @@ export interface CoSlateTestHook {
   /** Feed the store an inbound object-state delta, exactly as a peer would. */
   applyDelta(delta: SceneDelta): boolean;
   getSummary(): EditorSummary;
+  // The page's visual contract (R11): view configuration a host can set, proven
+  // to change what is painted without ever entering the document.
+  /** Current page background and grid, read back through the renderer. */
+  getViewConfig(): { background: string; grid: GridAppearance };
+  setBackground(color: string): void;
+  setGrid(partial: Partial<GridAppearance>): void;
 }
 
 declare global {
@@ -87,6 +93,12 @@ export function installTestHook(editor: WhiteboardEditor): CoSlateTestHook {
     setReadOnly: (readOnly) => editor.setReadOnly(readOnly),
     applyDelta: (delta) => editor.store.applyDelta(delta),
     getSummary: () => editor.getSummary(),
+    getViewConfig: () => ({
+      background: editor.renderer.getBackground(),
+      grid: { ...editor.renderer.getGrid() },
+    }),
+    setBackground: (color) => editor.setBackground(color),
+    setGrid: (partial) => editor.setGrid(partial),
     toJSON: () => editor.toJSON(),
     loadJSON: (text) => {
       editor.loadJSON(text);

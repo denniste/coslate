@@ -150,6 +150,44 @@ declared in. A `{count}` plural picks its CLDR category (`one`/`other` in Englis
 Arabic, one in Chinese); a missing category falls back to `other`, then to the fallback locale,
 then to the key itself, so nothing is ever silently blank.
 
+### The page: background and grid
+
+The page the board is drawn on — its background colour and its grid — is **view configuration**,
+the same class of state as the camera: it belongs to the host's surface, never to the document. It
+never appears in a serialized `Scene`, in a delta, or in an undo step, and the PNG export paints
+the very same page layer, so an export always matches what was configured:
+
+```ts
+// At construction — the first host's classroom board is white and ungridded:
+const editor = new WhiteboardEditor({
+  container,
+  background: '#ffffff',
+  grid: { visible: false },
+});
+// …or restyled rather than removed (any canvas colour; spacing is in world units):
+editor.setGrid({ color: 'rgba(0, 0, 0, 0.06)', majorColor: 'rgba(0, 0, 0, 0.12)', spacing: 25 });
+// …and it can change at runtime (a theme switch, a presentation mode):
+editor.setBackground('#ffffff');
+// `createSceneViewer` takes the same two options and the same setters.
+```
+
+The values used when a host does not choose, published so a host can derive from them:
+
+| Token | Default | Meaning |
+| --- | --- | --- |
+| page background | `#14161a` | painted under everything; also the PNG export background |
+| grid — visible | `true` | `{ visible: false }` removes the grid entirely |
+| grid — minor lines | `rgba(255, 255, 255, 0.05)` | any canvas colour |
+| grid — major lines | `rgba(255, 255, 255, 0.09)` | drawn every fifth step |
+| grid — spacing | `20` | world units; the drawn step adapts to the zoom level (roughly 24–96 screen px) |
+
+These are constructor options on the editor, the viewer and `SceneRenderer`, with
+`setBackground`/`setGrid` for runtime changes and `getBackground`/`getGrid` to read back. They are
+deliberately **not** `--coslate-*` custom properties: those theme the DOM chrome, while the page is
+a canvas — but a host that renders its own page around the board can mirror them by setting the
+same values on its own container. The constants live in `@coslate/core`
+(`DEFAULT_BACKGROUND`, `DEFAULT_GRID`, `resolveGrid`) and are re-exported from `@coslate/konva`.
+
 ## What v1 does
 
 **Scene**
@@ -197,6 +235,7 @@ then to the key itself, so nothing is ever silently blank.
 **Renderer (`@coslate/konva`)**
 - One-way scene → Konva reconciliation keyed by object id; three layers: grid, content, overlay.
 - The renderer never mutates the scene: gestures move *nodes*, then commit one command.
+- **The page is configurable** — see "The page: background and grid" below.
 
 **Tools**
 - select (click, shift-click, marquee, multi-object drag, rotate/resize via `Konva.Transformer`),

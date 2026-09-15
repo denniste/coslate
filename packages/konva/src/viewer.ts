@@ -1,5 +1,7 @@
 import {
   createStore,
+  DEFAULT_BACKGROUND,
+  type GridAppearance,
   type Id,
   type Scene,
   type SceneDelta,
@@ -28,7 +30,10 @@ export interface SceneViewerOptions {
   /** Starting document. Deltas may arrive before the baseline does. */
   scene?: Scene;
   viewport?: Viewport;
+  /** Page background — view configuration, never document state. Defaults to {@link DEFAULT_BACKGROUND}. */
   background?: string;
+  /** Grid look; unspecified fields keep the defaults. Pass `{ visible: false }` for an ungridded page. */
+  grid?: Partial<GridAppearance>;
   /** Watch the container and resize the stage. Defaults to `true`. */
   observeResize?: boolean;
 }
@@ -43,6 +48,14 @@ export interface SceneViewer {
   setScene(scene: Scene): void;
   /** Apply one inbound message. Returns whether anything changed. */
   applyDelta(delta: SceneDelta): boolean;
+  /**
+   * Repaint the page background. View configuration, not document state — it
+   * changes what this page (and any host-made export of it) looks like and
+   * never reaches the document.
+   */
+  setBackground(color: string): void;
+  /** Restyle or disable the grid, merging over the current configuration. */
+  setGrid(partial: Partial<GridAppearance>): void;
   /** Follow a remote camera, e.g. a "broadcast my view" feature. */
   setViewport(viewport: Viewport): void;
   getViewport(): Viewport;
@@ -74,7 +87,8 @@ export function createSceneViewer(options: SceneViewerOptions): SceneViewer {
     container: host,
     width: Math.max(1, container.clientWidth),
     height: Math.max(1, container.clientHeight),
-    background: options.background ?? '#14161a',
+    background: options.background ?? DEFAULT_BACKGROUND,
+    grid: options.grid,
   });
   renderer.attach(store);
   let viewport: Viewport = { ...DEFAULT_VIEWPORT, ...(options.viewport ?? {}) };
@@ -98,6 +112,8 @@ export function createSceneViewer(options: SceneViewerOptions): SceneViewer {
       store.reset(scene);
     },
     applyDelta: (delta: SceneDelta) => store.applyDelta(delta),
+    setBackground: (color: string) => renderer.setBackground(color),
+    setGrid: (partial: Partial<GridAppearance>) => renderer.setGrid(partial),
     setViewport: (next: Viewport) => {
       viewport = { ...next };
       renderer.applyViewport(viewport);

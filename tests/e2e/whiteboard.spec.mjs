@@ -163,6 +163,107 @@ const getRenderedScale = (page) => page.evaluate(() => window.__scene.getRendere
 const objectsOfType = (scene, type) => scene.order.map((id) => scene.objects[id]).filter((o) => o.type === type);
 const round = (value) => Math.round(value * 1000) / 1000;
 
+// --------------------------------------------- page-layer sampling (for R11)
+// The page layer is the first canvas of a Konva stage: background rect + grid.
+// Assertions read real pixels — "the config object changed" proves nothing
+// about what a host's audience sees. Stride 4 keeps a full-canvas pass cheap.
+
+async function samplePageLayer(page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('.coslate-canvas-host canvas');
+    if (!canvas) return null;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    if (!ctx || width === 0 || height === 0) return null;
+    const data = ctx.getImageData(0, 0, width, height).data;
+    const counts = {};
+    let samples = 0;
+    for (let y = 0; y < height; y += 4) {
+      for (let x = 0; x < width; x += 4) {
+        const i = (y * width + x) * 4;
+        const key = `${data[i]},${data[i + 1]},${data[i + 2]}`;
+        counts[key] = (counts[key] ?? 0) + 1;
+        samples += 1;
+      }
+    }
+    let modal = '';
+    let modalCount = 0;
+    for (const [key, count] of Object.entries(counts)) {
+      if (count > modalCount) {
+        modal = key;
+        modalCount = count;
+      }
+    }
+    return { width, height, samples, modal, modalCount, counts };
+  });
+}
+
+/** Redraws are rAF-scheduled (`batchDraw`), so poll until the pixels agree. */
+async function samplePageLayerUntil(page, predicate, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let sample = await samplePageLayer(page);
+  while (!sample || !predicate(sample)) {
+    if (Date.now() > deadline) break;
+    await page.waitForTimeout(50);
+    sample = await samplePageLayer(page);
+  }
+  return sample;
+}
+
+/** Count sampled pixels close to a pure grid colour (tolerant for the scaled export raster). */
+function countColor(sample, kind) {
+  const test =
+    kind === 'red'
+      ? (r, g, b) => r > 200 && g < 80 && b < 80
+      : (r, g, b) => b > 200 && r < 80 && g < 80;
+  let total = 0;
+  for (const [key, count] of Object.entries(sample.counts)) {
+    const [r, g, b] = key.split(',').map(Number);
+    if (test(r, g, b)) total += count;
+  }
+  return total;
+}
+
+/** Export a PNG through the public API and sample its pixels (runs in the page). */
+async function exportPixels(page) {
+  const dataUrl = await page.evaluate(() => window.__scene.editor.exportPNG());
+  return page.evaluate((url) => {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        const counts = {};
+        let samples = 0;
+        for (let y = 0; y < canvas.height; y += 8) {
+          for (let x = 0; x < canvas.width; x += 8) {
+            const i = (y * canvas.width + x) * 4;
+            const key = `${data[i]},${data[i + 1]},${data[i + 2]}`;
+            counts[key] = (counts[key] ?? 0) + 1;
+            samples += 1;
+          }
+        }
+        let modal = '';
+        let modalCount = 0;
+        for (const [key, count] of Object.entries(counts)) {
+          if (count > modalCount) {
+            modal = key;
+            modalCount = count;
+          }
+        }
+        resolve({ width: canvas.width, height: canvas.height, samples, modal, modalCount, counts });
+      };
+      image.onerror = () => reject(new Error('the exported PNG did not decode'));
+      image.src = url;
+    });
+  }, dataUrl);
+}
+
 /** Newest mtime under a directory tree, or 0 when it does not exist. */
 function newestMtimeMs(dir) {
   if (!existsSync(dir)) return 0;
@@ -1298,6 +1399,129 @@ try {
     await page.goto(BASE_URL, { waitUntil: 'load' });
     await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
     return 'viewer renders, replay is a no-op, no editor and no editable controls';
+  });
+
+  // --------------------- y. the page's visual contract (R11, editor surface)
+  await check('y', 'page background and grid are view config: they repaint the page, the PNG export follows, and the document never changes', async () => {
+    // The defaults are part of the published contract — pin them here so the
+    // docs, the constants and the pixels cannot drift apart silently.
+    const defaults = await page.evaluate(() => window.__scene.getViewConfig());
+    assert.deepEqual(defaults, {
+      background: '#14161a',
+      grid: { visible: true, color: 'rgba(255, 255, 255, 0.05)', majorColor: 'rgba(255, 255, 255, 0.09)', spacing: 20 },
+    });
+
+    // A known camera, so grid-line density is deterministic for the counts below.
+    await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+
+    // Default page: the dark fill dominates, and the grid draws over it.
+    const dark = await samplePageLayerUntil(
+      page,
+      (s) => s.modal === '20,22,26' && Object.keys(s.counts).length > 1,
+    );
+    assert.ok(dark, `the default page should be #14161a with grid on top, modal was ${dark?.modal}`);
+
+    // The document before any appearance change — appearance must never touch it.
+    const documentBefore = await page.evaluate(() => window.__scene.toJSON());
+
+    // Host look #1 — the classroom board: white page, no grid at all.
+    await page.evaluate(() => {
+      window.__scene.setBackground('#ffffff');
+      window.__scene.setGrid({ visible: false });
+    });
+    const plain = await samplePageLayerUntil(
+      page,
+      (s) => s.modal === '255,255,255' && Object.keys(s.counts).length === 1,
+    );
+    assert.ok(plain, `a white ungridded page must be exactly one colour, saw ${JSON.stringify(Object.keys(plain?.counts ?? {}))}`);
+
+    // Host look #2 — a restyled grid: both colours AND the spacing change.
+    await page.evaluate(() => window.__scene.setGrid({ visible: true, color: '#ff0000', majorColor: '#0000ff', spacing: 20 }));
+    const gridded = await samplePageLayerUntil(
+      page,
+      (s) => s.modal === '255,255,255' && countColor(s, 'red') > 0 && countColor(s, 'blue') > 0,
+    );
+    assert.ok(gridded, 'a restyled grid must draw exactly its configured colours');
+    const denseRed = countColor(gridded, 'red');
+
+    // Spacing is honoured too: 10x the base spacing draws measurably fewer lines
+    // (10 is not a power of two, so the zoom-adaptive step can never collapse
+    // the two configurations onto the same drawn grid).
+    await page.evaluate(() => window.__scene.setGrid({ spacing: 200 }));
+    const sparse = await samplePageLayerUntil(
+      page,
+      (s) => countColor(s, 'red') > 0 && countColor(s, 'red') < denseRed * 0.95,
+    );
+    assert.ok(sparse, `a larger spacing must draw fewer lines (${countColor(sparse ?? gridded, 'red')} vs ${denseRed})`);
+
+    // The export follows the same choice: white background, configured grid.
+    const pngGridded = await exportPixels(page);
+    assert.equal(pngGridded.modal, '255,255,255', `exported background should be white, modal was ${pngGridded.modal}`);
+    assert.ok(countColor(pngGridded, 'red') > 0, 'the exported PNG must carry the configured grid');
+    assert.ok(countColor(pngGridded, 'blue') > 0, 'the exported PNG must carry the configured major grid');
+    assert.ok(!pngGridded.counts['20,22,26'], 'the exported PNG must not carry the old default background');
+
+    // Grid off again → the export loses it too.
+    await page.evaluate(() => window.__scene.setGrid({ visible: false }));
+    const pngPlain = await exportPixels(page);
+    assert.equal(pngPlain.modal, '255,255,255');
+    assert.equal(countColor(pngPlain, 'red'), 0, 'a disabled grid must not reach the export');
+    assert.equal(countColor(pngPlain, 'blue'), 0, 'a disabled grid must not reach the export');
+
+    // And the whole time, the document was untouched: view config, not scene state.
+    const documentAfter = await page.evaluate(() => window.__scene.toJSON());
+    assert.equal(documentAfter, documentBefore, 'appearance configuration must never change the document');
+
+    // Restore the documented look for anything that reads the page later.
+    await page.evaluate(() => {
+      window.__scene.setBackground('#14161a');
+      window.__scene.setGrid({ visible: true, color: 'rgba(255, 255, 255, 0.05)', majorColor: 'rgba(255, 255, 255, 0.09)', spacing: 20 });
+    });
+    await samplePageLayerUntil(page, (s) => s.modal === '20,22,26');
+    assert.deepEqual(await page.evaluate(() => window.__scene.getViewConfig()), defaults, 'the getter round-trips the restored configuration');
+    await shot(page, 'y-visual-contract');
+    return 'white/ungridded and restyled grids repaint the page, exports match, document byte-identical';
+  });
+
+  // --------------------- z. the page's visual contract (R11, viewer surface)
+  await check('z', 'the read-only viewer honours the same visual contract without touching its document', async () => {
+    await page.goto(`${BASE_URL}viewer.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(window.__viewer), null, { timeout: 10_000 });
+    await page.waitForSelector('.coslate-canvas-host canvas');
+
+    const defaults = await page.evaluate(() => window.__viewer.getViewConfig());
+    assert.deepEqual(defaults, {
+      background: '#14161a',
+      grid: { visible: true, color: 'rgba(255, 255, 255, 0.05)', majorColor: 'rgba(255, 255, 255, 0.09)', spacing: 20 },
+    }, 'the viewer must expose the same documented defaults as the editor');
+
+    const dark = await samplePageLayerUntil(
+      page,
+      (s) => s.modal === '20,22,26' && Object.keys(s.counts).length > 1,
+    );
+    assert.ok(dark, 'the viewer page should start on the default dark, gridded look');
+
+    // The host look, on the projection surface: white and ungridded.
+    await page.evaluate(() => {
+      window.__viewer.setBackground('#ffffff');
+      window.__viewer.setGrid({ visible: false });
+    });
+    const plain = await samplePageLayerUntil(
+      page,
+      (s) => s.modal === '255,255,255' && Object.keys(s.counts).length === 1,
+    );
+    assert.ok(plain, 'a host-configured viewer must render the white, ungridded page');
+
+    // Still view state over here too: the projected document is unchanged.
+    const scene = await page.evaluate(() => window.__viewer.getScene());
+    assert.equal(scene.order.length, 0, 'appearance configuration must not create objects');
+
+    await shot(page, 'z-viewer-visual');
+
+    // Back to the editor page, leaving the suite where it found it.
+    await page.goto(BASE_URL, { waitUntil: 'load' });
+    await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+    return 'viewer defaults match the editor, config repaints, projected document stays empty';
   });
 
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;

@@ -55,6 +55,15 @@ is described.
   package: ships its own stylesheet (`ensureChromeStyles`, no CSS pipeline needed), themes through
   `--coslate-*` custom properties, takes every user-visible string from the host
   (`ChromeMessageKey`), and collapses entirely via `chrome:'none'` / `setChromeVisible(false)`.
+- **A controllable page visual contract** (`@coslate/konva`, defaults in `@coslate/core`): a host
+  sets the page background and can disable or restyle the grid — colour of the minor/major lines
+  and the base spacing — on the editor, the viewer or the renderer, at construction
+  (`background`, `grid` options) or at runtime (`setBackground`/`setGrid`, with
+  `getBackground`/`getGrid` to read back). The PNG export paints the same page layer with the
+  camera the export borrows, so an export always carries exactly the configured background and
+  grid. Like the camera, this is view state: it never appears in a serialized `Scene`, a delta or
+  an undo step. Defaults (`#14161a`, faint white grid, base spacing 20) are documented in
+  `README.md` and `ARCHITECTURE.md`.
 
 ## 0.1.0 — an open interactive scene runtime
 

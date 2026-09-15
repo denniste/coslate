@@ -4,6 +4,7 @@ import {
   clampScale,
   createEmptyScene,
   createStore,
+  DEFAULT_BACKGROUND,
   DEFAULT_VIEWPORT,
   deserialize,
   isObjectOfType,
@@ -18,6 +19,7 @@ import {
   updateObjectOps,
   zoomAt,
   zoomTo,
+  type GridAppearance,
   type Id,
   type ObjectPropPatch,
   type Point,
@@ -71,7 +73,17 @@ export interface EditorOptions {
   container: HTMLElement;
   store?: SceneStore;
   style?: Partial<EditorStyle>;
+  /**
+   * Page background — the classroom board's colour, painted under everything and
+   * included in the PNG export. Defaults to {@link DEFAULT_BACKGROUND}.
+   */
   background?: string;
+  /**
+   * Grid look; unspecified fields keep the defaults. The grid is view
+   * configuration, never document state — pass `{ visible: false }` for an
+   * ungridded surface. See {@link WhiteboardEditor.setGrid}.
+   */
+  grid?: Partial<GridAppearance>;
   width?: number;
   height?: number;
   historyLimit?: number;
@@ -192,7 +204,8 @@ export class WhiteboardEditor implements ToolHost {
       container: this.canvasHost,
       width,
       height,
-      background: options.background ?? '#14161a',
+      background: options.background ?? DEFAULT_BACKGROUND,
+      grid: options.grid,
     });
     this.overlay = this.renderer.getOverlayLayer();
 
@@ -490,6 +503,26 @@ export class WhiteboardEditor implements ToolHost {
       },
       { label: 'Change style' },
     );
+  }
+
+  // --------------------------------------------------------------- appearance
+
+  /**
+   * Repaint the page background. View configuration, not document state — this
+   * never reaches a serialized scene, a delta, or an undo step; it only changes
+   * what the page (and the PNG export, which paints the same layer) looks like.
+   */
+  setBackground(color: string): void {
+    this.renderer.setBackground(color);
+  }
+
+  /**
+   * Restyle or disable the grid (`{ visible: false }`), merging over the
+   * current configuration. Same rule as {@link setBackground}: view
+   * configuration, never document state.
+   */
+  setGrid(partial: Partial<GridAppearance>): void {
+    this.renderer.setGrid(partial);
   }
 
   // ------------------------------------------------------------------ editing

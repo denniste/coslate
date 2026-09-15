@@ -209,6 +209,13 @@ store.getState() ──subscribe──▶ SceneRenderer.sync(scene)
 - **Reconciliation, not rebuilding.** Nodes are keyed by object id: `sync()` creates what is
   new, updates what changed, destroys what is gone and re-applies paint order only when the
   order array actually changed. Selection and transformer attachments survive a re-render.
+- **The page layer is view configuration, not document state.** What the grid layer paints — the
+  page background and the grid (visible, minor/major colour, base spacing) — belongs to the host's
+  surface, like the camera. It is a constructor option and a runtime setter
+  (`setBackground`/`setGrid`, defaults `DEFAULT_BACKGROUND`/`DEFAULT_GRID` in core's
+  `appearance.ts`), and it never reaches a serialized scene, a delta or an undo step. PNG export
+  paints this same layer with the camera the export borrows, so an export always carries exactly
+  the background and grid the host chose — nothing to keep in sync.
 - **The content layer carries the camera, not the stage root.** Konva's `Transformer` sizes its
   anchors in screen pixels and assumes an unscaled parent, and transient UI should not get
   thicker as you zoom in. Transforming the content layer keeps the overlay in screen space and
@@ -411,7 +418,7 @@ Explicitly out of scope, and enforced by not building them:
 | React bindings | The runtime is framework-free on purpose; bindings belong in a separate package. |
 | zod or runtime schema validation | The validator is small, typed and dependency-free; a schema library would be a dependency in the one package that must not have any. |
 | SVG renderer | The renderer boundary makes one possible; shipping two renderers in v1 would double the surface for no user benefit. |
-| Themes beyond dark | Cosmetic, and it would leak product decisions into the runtime. |
+| Themes beyond dark | Cosmetic, and it would leak product decisions into the runtime. (The settable page background and grid are view *configuration* for the canvas, not a theme system; the chrome stays dark and `--coslate-*`-themed.) |
 | Runtime-loaded plugins | The object-type table is open, but a plugin *loader* needs a security and versioning story that v1 does not have. |
 
 ---
@@ -448,7 +455,7 @@ annotations live, which is why it is free-form today.
 | | Scope | Status |
 | --- | --- | --- |
 | **v0.1** | Scene model, command protocol + JSON Patch, transactions, bounded undo/redo, viewport math, serialization with migrations, Konva renderer, six object types, eight tools, style system, locale primitives, PNG/JSON export, demo app, unit + Playwright suites | **shipped** |
-| **v0.2 — host-ready** | Camera out of the document (v2 + migration), object-state records with idempotent and atomic remote apply, read-only projection (`createSceneViewer`) and editor read-only gating, undoable `clearAll`, baseline semantics (`isSceneEmpty` / `readBaseline`), `@coslate/ui` with theme + host-injected strings + hide-all-chrome, `getSummary()` status push-back | **shipped** |
+| **v0.2 — host-ready** | Camera out of the document (v2 + migration), object-state records with idempotent and atomic remote apply, read-only projection (`createSceneViewer`) and editor read-only gating, undoable `clearAll`, baseline semantics (`isSceneEmpty` / `readBaseline`), `@coslate/ui` with theme + host-injected strings + hide-all-chrome, `getSummary()` status push-back, controllable page background and grid (the visual contract) | **shipped** |
 | **v1.1** | Grouping (`parentId` is already reserved), lock/hide UI, copy/paste across documents, image object, alignment guides, snap-to-grid, multi-page documents, `store.beginTransaction()` for long-lived gestures | planned |
 | **v2** | Object Plugin registry, domain packs, optional sync package built on the command protocol, AI client as a first-class command producer, alternative (SVG/headless) renderers | planned |
 

@@ -1,6 +1,6 @@
 import './app.css';
 import { createSceneViewer } from '@coslate/konva';
-import type { Scene, SceneDelta, Viewport } from '@coslate/core';
+import type { GridAppearance, Scene, SceneDelta, Viewport } from '@coslate/core';
 
 /**
  * Read-only viewer entry.
@@ -28,6 +28,9 @@ declare global {
       getScene(): Scene;
       setViewport(viewport: Viewport): void;
       getViewport(): Viewport;
+      getViewConfig(): { background: string; grid: GridAppearance };
+      setBackground(color: string): void;
+      setGrid(partial: Partial<GridAppearance>): void;
       destroy(): void;
     };
   }
@@ -38,5 +41,11 @@ window.__viewer = {
   getScene: () => viewer.getScene(),
   setViewport: (viewport) => viewer.setViewport(viewport),
   getViewport: () => viewer.getViewport(),
+  getViewConfig: () => ({
+    background: viewer.renderer.getBackground(),
+    grid: { ...viewer.renderer.getGrid() },
+  }),
+  setBackground: (color) => viewer.setBackground(color),
+  setGrid: (partial) => viewer.setGrid(partial),
   destroy: () => viewer.destroy(),
 };
