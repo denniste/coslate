@@ -227,10 +227,13 @@ const STYLESHEET = `
     0 0 0 2px var(--coslate-accent-soft);
 }
 
-.coslate-ui .swatch-none {
-  background:
-    linear-gradient(45deg, transparent 44%, var(--coslate-danger) 44%, var(--coslate-danger) 56%, transparent 56%),
-    var(--coslate-panel-alt);
+/* Specificity note: this must outrank the .toolbar-group > button flattening
+   rule (0-2-1), which sets grouped controls transparent — a 0-2-0 rule loses
+   and the checkerboard silently disappears. */
+.coslate-ui .toolbar-group .swatch-none {
+  /* The "no fill" sample is the universal transparency checkerboard: an
+     empty swatch would be invisible on the dark chrome. */
+  background: repeating-conic-gradient(#c9ced6 0% 25%, #ffffff 0% 50%) 50% / 10px 10px;
 }
 
 /* The custom-colour swatches carry a painter's-board glyph instead of a colour
@@ -263,6 +266,19 @@ const STYLESHEET = `
 
 .coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .palette-dab {
   color: rgba(0, 0, 0, 0.72);
+}
+
+/* The stroke custom swatch carries the colour-wheel glyph, which ships its
+   own literal fills; the active state recolours it to the same white-glyph-
+   on-the-chosen-colour treatment as the palette, so the colour stays the
+   signal and the glyph stays the identifier. */
+.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .picker-wheel,
+.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .picker-dropper {
+  fill: #fff;
+}
+
+.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .picker-dark {
+  fill: rgba(0, 0, 0, 0.72);
 }
 
 .coslate-ui .color-input {

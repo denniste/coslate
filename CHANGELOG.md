@@ -8,10 +8,14 @@ anything may still change, but breaking changes are called out explicitly.
 
 ### Changed
 
-- **The custom stroke/fill colour buttons are now painter's-board icons.** The idle swatch was a
-  colour-wheel gradient that muddied to a dark, unclear disc at 22 px; both custom pickers now
-  show a board glyph on the neutral panel, and keep the same glyph — white with a dark halo, so
-  it survives any colour — over the chosen colour when active.
+- **The style strip's "invisible on the dark chrome" samples are gone.** The
+  no-fill swatch was a red slash over the panel colour and the panel-fill
+  swatch showed the panel colour itself — both indistinguishable from the
+  toolbar. No-fill is now the universal grey/white transparency checkerboard,
+  and the panel-fill swatch samples in neutral grey (the colour it applies is
+  unchanged). The custom stroke picker wears a colour-wheel-and-eyedropper
+  glyph, and the custom fill picker a palette-and-brush; both keep the glyph
+  white over the chosen colour when active.
 
 ## 0.2.2 — baselines through the delta path, custom colours, calmer zoom (2026-09-15)
 

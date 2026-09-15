@@ -39,10 +39,12 @@ const TOOL_META: Record<ToolName, { key: ChromeMessageKey; hint: string; icon: I
   text: { key: 'tool.text.label', hint: 'T', icon: 'text' },
 };
 
-const FILL_OPTIONS: { value: string | null; key: ChromeMessageKey }[] = [
+const FILL_OPTIONS: { value: string | null; key: ChromeMessageKey; sample?: string }[] = [
   { value: null, key: 'style.fill.none' },
   { value: '#ffffff', key: 'style.fill.white' },
-  { value: '#1c2129', key: 'style.fill.panel' },
+  // The panel/board colour as a fill: sampled in grey because the true colour
+  // is the chrome's own background — an honest swatch would read as empty.
+  { value: '#1c2129', key: 'style.fill.panel', sample: 'var(--coslate-muted)' },
 ];
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -361,7 +363,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     'data-testid': 'stroke-custom',
     'aria-pressed': 'false',
   });
-  strokeCustom.append(icon('palette', 18));
+  strokeCustom.append(icon('colorWheel', 18));
   strokeCustom.addEventListener('click', () => strokeCustomInput.click());
   tooltip.bind(strokeCustom, () => ({ label: t('style.strokeCustom') }));
   style.append(strokeCustom, strokeCustomInput);
@@ -375,7 +377,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
       'data-testid': testId,
       'aria-pressed': 'false',
     });
-    if (option.value !== null) swatch.style.background = option.value;
+    if (option.value !== null) swatch.style.background = option.sample ?? option.value;
     swatch.addEventListener('click', () => editor.setStyle({ fill: option.value }));
     tooltip.bind(swatch, () => ({ label: t(option.key) }));
     fillButtons.set(String(option.value), swatch);
