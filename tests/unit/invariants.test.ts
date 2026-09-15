@@ -144,6 +144,16 @@ describe('invariants: the embedded UI', () => {
     expect(INPUT_BINDING.test(stripComments(viewer))).toBe(false);
   });
 
+  it('I3 — no chrome control replaces the document (it must go through the command pipeline)', () => {
+    // The regression this guards: the clear button called editor.clear(), which resets the document
+    // outside the pipeline — so it was neither undoable nor broadcast (0.2.1, see docs/bug-log.md).
+    const forbidden = [/editor\.clear\(\)/, /store\.reset\(/, /\.setScene\(/];
+    const offenders = filesUnder(join(ROOT, 'packages/ui/src'))
+      .filter((file) => forbidden.some((pattern) => pattern.test(stripComments(readFileSync(file, 'utf8')))))
+      .map((file) => file.slice(ROOT.length));
+    expect(offenders).toEqual([]);
+  });
+
   it('I13 — the chrome publishes its theme and stacking context as custom properties', () => {
     const styles = readFileSync(join(ROOT, 'packages/ui/src/styles.ts'), 'utf8');
     for (const token of [
