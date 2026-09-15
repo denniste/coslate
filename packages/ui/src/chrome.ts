@@ -272,23 +272,35 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
   // --- language ------------------------------------------------------------
   // A native <select>, because a language menu is exactly what it is good at:
   // keyboard navigation, screen-reader support and mobile pickers for free.
-  const languageSelect = el('select', {
-    class: 'language-select',
-    'data-testid': 'locale-select',
-  });
-  for (const language of i18n.languages) {
-    const option = el('option', { value: language.tag });
-    option.textContent = language.label;
-    languageSelect.append(option);
+  // The group exists only when there is something to choose: a host that ships
+  // fewer than two languages gets no menu at all, not a visible, empty, dead
+  // control (O2 in the bug log).
+  const languageSelect =
+    i18n.languages.length >= 2
+      ? el('select', {
+          class: 'language-select',
+          'data-testid': 'locale-select',
+        })
+      : null;
+  if (languageSelect) {
+    for (const language of i18n.languages) {
+      const option = el('option', { value: language.tag });
+      option.textContent = language.label;
+      languageSelect.append(option);
+    }
+    languageSelect.value = i18n.locale;
+    languageSelect.addEventListener('change', () => {
+      i18n.setLocale(languageSelect.value);
+    });
   }
-  languageSelect.value = i18n.locale;
-  languageSelect.addEventListener('change', () => {
-    i18n.setLocale(languageSelect.value);
-  });
-  const globe = el('span', { class: 'toolbar-glyph' });
-  globe.append(icon('globe', 18));
-  const language = group('group.language', globe, languageSelect);
-  tooltip.bind(languageSelect, () => ({ label: t('language.label') }));
+  const language = languageSelect
+    ? (() => {
+        const globe = el('span', { class: 'toolbar-glyph' });
+        globe.append(icon('globe', 18));
+        tooltip.bind(languageSelect, () => ({ label: t('language.label') }));
+        return group('group.language', globe, languageSelect);
+      })()
+    : null;
 
   // --- style ---------------------------------------------------------------
   const style = el('div', { class: 'toolbar-group toolbar-style', role: 'group' });
@@ -346,7 +358,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
   // The toolbar fills its container; the inner wrapper carries the padding so
   // the container-query width is the true available width (see styles.ts).
   const main = el('div', { class: 'toolbar-main' });
-  main.append(tools, history, zoom, objectActions, io, language);
+  main.append(tools, history, zoom, objectActions, io, ...(language ? [language] : []));
   const toolbarInner = el('div', { class: 'coslate-toolbar-inner' }, [main, style]);
   toolbar.append(toolbarInner);
 
@@ -412,7 +424,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     for (const node of toolbar.querySelectorAll<HTMLElement>('[data-label-key]')) {
       node.setAttribute('aria-label', t(node.dataset.labelKey as ChromeMessageKey));
     }
-    languageSelect.value = i18n.locale;
+    if (languageSelect) languageSelect.value = i18n.locale;
 
     toolStatus.label.textContent = t('status.tool');
     toolStatus.value.textContent = t(TOOL_META[tool].key);

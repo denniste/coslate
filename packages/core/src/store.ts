@@ -114,6 +114,29 @@ interface Frame {
 /** Re-exported from `types.ts`, where the scene type lives. */
 export { createEmptyScene } from './types.js';
 
+/**
+ * Whether an input that `normalizeDelta` refused is genuinely corrupt, rather
+ * than a well-formed frame that merely carries no change (`{}`, `{added: []}`).
+ *
+ * A duplicate frame never gets here: `normalizeDelta` accepts it and the apply
+ * turns out to be a no-op. The distinction matters to hosts that count dropped
+ * frames (O1 in the bug log) — an empty frame is ordinary transport noise,
+ * while a frame that is not a delta-shaped object, or that carries entries no
+ * receiver could use, is a payload the sender got wrong.
+ */
+function isCorruptDeltaFrame(input: unknown): boolean {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return true;
+  const raw = input as Record<string, unknown>;
+  const emptyOrAbsent = (value: unknown): boolean =>
+    value === undefined || (Array.isArray(value) && value.length === 0);
+  return !(
+    emptyOrAbsent(raw.added) &&
+    emptyOrAbsent(raw.updated) &&
+    emptyOrAbsent(raw.removed) &&
+    (raw.order === undefined || (Array.isArray(raw.order) && raw.order.length === 0))
+  );
+}
+
 export function createStore(options: StoreOptions = {}): SceneStore {
   let scene: Scene = options.scene ?? createEmptyScene();
   const history = new History({ limit: options.historyLimit ?? DEFAULT_HISTORY_LIMIT });
@@ -217,7 +240,22 @@ export function createStore(options: StoreOptions = {}): SceneStore {
 
     applyDelta(delta: SceneDelta): boolean {
       const normalized = normalizeDelta(delta);
-      if (!normalized) return false;
+      if (!normalized) {
+        // (O1) A frame that changed nothing returns false — that is idempotence,
+        // and a duplicate is ordinary transport behaviour, never an error. But a
+        // frame that could not be *understood* used to vanish the same way, which
+        // left a host unable to count dropped frames. Report the corrupt case
+        // through onError — deliberately without the throwing fallback of
+        // `reportError`: R4 promises applyDelta never throws at the caller, with
+        // or without a host-supplied onError.
+        if (isCorruptDeltaFrame(delta)) {
+          options.onError?.(
+            new TypeError('CoSlate: applyDelta received a delta that could not be understood'),
+            'applyDelta',
+          );
+        }
+        return false;
+      }
       const command = deltaToCommands(scene, normalized, { source: 'api', label: 'remote' });
       if (!command) return false;
       store.applyRemote([command]);

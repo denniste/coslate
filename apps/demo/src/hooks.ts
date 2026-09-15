@@ -40,6 +40,9 @@ export interface CoSlateTestHook {
   deleteSelection(): void;
   duplicateSelection(): Id[];
   setStyle(partial: Partial<EditorStyle>): void;
+  /** Destructive reset ("open a different board") — the canonical name of the old `clear`. */
+  resetDocument(): void;
+  /** Deprecated alias of {@link resetDocument}, kept for older suite code. */
   clear(): void;
   /** Undoable "clear the board", as opposed to the destructive reset above. */
   clearAll(): number;
@@ -87,6 +90,7 @@ export function installTestHook(editor: WhiteboardEditor): CoSlateTestHook {
     deleteSelection: () => editor.deleteSelection(),
     duplicateSelection: () => editor.duplicateSelection(),
     setStyle: (partial) => editor.setStyle(partial),
+    resetDocument: () => editor.resetDocument(),
     clear: () => editor.clear(),
     clearAll: () => editor.clearAll(),
     isReadOnly: () => editor.isReadOnly(),

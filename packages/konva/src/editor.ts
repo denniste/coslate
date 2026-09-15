@@ -799,11 +799,28 @@ export class WhiteboardEditor implements ToolHost {
   /**
    * Reset the document and **discard history**. This is "open a different board",
    * not "clear the board": the camera survives (it is not in the document) but
-   * nothing can be undone afterwards.
+   * nothing can be undone afterwards. For wiping the *current* board use
+   * {@link clearAll} — one undoable, broadcast transaction.
+   *
+   * Renamed from `clear()` in 0.2.1 (O3 in the bug log): the one-word difference
+   * from `clearAll` is exactly how the chrome's clear button ended up wired to
+   * the destructive reset, silently bypassing the command pipeline.
    */
-  clear(): void {
+  resetDocument(): void {
     this.setSelection([]);
     this.store.reset(createEmptyScene());
+  }
+
+  /**
+   * Deprecated alias of {@link resetDocument}, kept so 0.2.x embeds keep working.
+   * Do not wire new controls to it: it replaces the document outside the command
+   * pipeline (nothing is undoable or broadcast). Removal is scheduled for the
+   * next release that breaks the surface, agreed with the host first.
+   *
+   * @deprecated Use {@link resetDocument} (reset) or {@link clearAll} (clear the board).
+   */
+  clear(): void {
+    this.resetDocument();
   }
 
   /**

@@ -1565,6 +1565,156 @@ try {
     },
   );
 
+  // ------------------------------------ ab. no dead language control (O2)
+  await check(
+    'ab',
+    'the chrome mounts no language control when the host offers fewer than two languages',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+
+      // The reference host ships four languages, so the menu exists with them all.
+      const options = await page.locator('[data-testid="locale-select"] option').count();
+      assert.ok(options >= 2, `the reference host should mount the language menu, found ${options} option(s)`);
+
+      // One language: nothing to choose — the whole group must be absent, while
+      // the rest of the chrome and the status bar keep working.
+      await page.evaluate(() => window.__chrome.setLanguageCount(1));
+      assert.equal(await page.locator('[data-testid="locale-select"]').count(), 0, 'one language must leave no language control');
+      assert.ok(await page.locator('[data-testid="tool-pen"]').isVisible(), 'the toolbar must survive without the menu');
+      assert.ok(await page.locator('#statusbar .status-message').isVisible(), 'the status bar must survive without the menu');
+
+      await page.evaluate(() => window.__chrome.setLanguageCount(0));
+      assert.equal(await page.locator('[data-testid="locale-select"]').count(), 0, 'zero languages must leave no language control');
+
+      // And restoring the host table brings a working menu back.
+      await page.evaluate(() => window.__chrome.setLanguageCount(4));
+      assert.equal(await page.locator('[data-testid="locale-select"] option').count(), options, 'the menu must come back with the host table');
+      await shot(page, 'ab-language-menu');
+      return `menu present at ${options} languages, absent at 1 and 0, restored at ${options}`;
+    },
+  );
+
+  // ------------------- ac. every mutating toolbar control, proven by one undo
+  await check(
+    'ac',
+    'delete / duplicate / front / back / style / text-commit each change the document and one undo reverts each',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+
+      // A known camera, so screen coordinates are world coordinates throughout.
+      await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+      const box = await page.locator('.coslate-canvas-host canvas').first().boundingBox();
+      const at = (x, y) => ({ x: box.x + x, y: box.y + y });
+
+      // Setup: two strokes, drawn for real with the pen tool.
+      await page.click('[data-testid="tool-pen"]');
+      const draw = async (x, y) => {
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x + 80, y + 50, { steps: 8 });
+        await page.mouse.up();
+        await page.waitForTimeout(120);
+      };
+      await draw(at(120, 180).x, at(120, 180).y);
+      await draw(at(320, 380).x, at(320, 380).y);
+      const ids = await page.evaluate(() => window.__scene.getScene().order);
+      assert.equal(ids.length, 2, 'setup: the two strokes exist');
+      const doc = () => page.evaluate(() => window.__scene.getScene());
+      const order = () => doc().then((s) => s.order);
+      const select = (id) => page.evaluate((i) => window.__scene.setSelection([i]), id);
+
+      // Selection itself is real input: click stroke B inside its own bbox.
+      await page.click('[data-testid="tool-select"]');
+      const b = (await doc()).objects[ids[1]];
+      await page.mouse.click(box.x + b.x + b.width / 2, box.y + b.y + b.height / 2);
+      assert.deepEqual(await page.evaluate(() => window.__scene.getSelection()), [ids[1]], 'the click should select stroke B');
+
+      // duplicate: a new object appears; one undo removes exactly it.
+      await page.click('[data-testid="duplicate"]');
+      await page.waitForTimeout(150);
+      let s = await doc();
+      assert.equal(s.order.length, 3, 'duplicate added an object');
+      const copyId = (await page.evaluate(() => window.__scene.getSelection()))[0];
+      assert.ok(copyId && copyId !== ids[1], 'the duplicate is a new object and is selected');
+      await page.evaluate(() => window.__scene.undo());
+      s = await doc();
+      assert.equal(s.order.length, 2, 'one undo removed the duplicate');
+      assert.equal(s.objects[copyId], undefined, 'the duplicate is gone');
+
+      // delete: the selection goes; one undo brings it back with its data.
+      await select(ids[1]);
+      await page.click('[data-testid="delete"]');
+      await page.waitForTimeout(150);
+      s = await doc();
+      assert.equal(s.order.length, 1, 'delete removed the selection');
+      assert.equal(s.objects[ids[1]], undefined, 'stroke B is gone');
+      await page.evaluate(() => window.__scene.undo());
+      s = await doc();
+      assert.equal(s.order.length, 2, 'one undo restored the deleted object');
+      assert.deepEqual(s.objects[ids[1]].data, JSON.parse(JSON.stringify(b.data)), 'the restored stroke kept its data');
+
+      // front / back: the paint order moves; one undo restores it exactly.
+      const orderBefore = await order();
+      await select(ids[0]);
+      await page.click('[data-testid="back"]');
+      await page.waitForTimeout(120);
+      let reordered = await order();
+      assert.equal(reordered[0], ids[0], 'send-to-back moved stroke A first');
+      await page.evaluate(() => window.__scene.undo());
+      const afterBack = await order();
+      assert.deepEqual(afterBack, orderBefore, `undo after back: before=${JSON.stringify(orderBefore)} after=${JSON.stringify(afterBack)}`);
+
+      await select(ids[0]);
+      await page.click('[data-testid="front"]');
+      await page.waitForTimeout(120);
+      reordered = await order();
+      assert.equal(reordered[reordered.length - 1], ids[0], 'bring-to-front moved stroke A last');
+      await page.evaluate(() => window.__scene.undo());
+      const afterFront = await order();
+      assert.deepEqual(afterFront, orderBefore, `undo after front: before=${JSON.stringify(orderBefore)} after=${JSON.stringify(afterFront)}`);
+
+      // style: a swatch and a width button restyle the selection; one undo each.
+      const strokeBefore = (await doc()).objects[ids[0]].data.stroke;
+      await select(ids[0]);
+      await page.click('[data-testid="stroke-ff6b6b"]');
+      await page.waitForTimeout(120);
+      assert.equal((await doc()).objects[ids[0]].data.stroke, '#ff6b6b', 'the swatch restyled the selection');
+      await page.evaluate(() => window.__scene.undo());
+      assert.equal((await doc()).objects[ids[0]].data.stroke, strokeBefore, 'one undo restored the colour');
+
+      const widthBefore = (await doc()).objects[ids[0]].data.strokeWidth;
+      await select(ids[0]);
+      await page.click('[data-testid="width-8"]');
+      await page.waitForTimeout(120);
+      assert.equal((await doc()).objects[ids[0]].data.strokeWidth, 8, 'the width button restyled the selection');
+      await page.evaluate(() => window.__scene.undo());
+      assert.equal((await doc()).objects[ids[0]].data.strokeWidth, widthBefore, 'one undo restored the width');
+
+      // text commit: type into the real overlay; the object lands; one undo removes it.
+      await page.click('[data-testid="tool-text"]');
+      await page.mouse.click(at(560, 520).x, at(560, 520).y);
+      await page.waitForSelector('textarea.coslate-text-overlay', { timeout: 5000 });
+      await page.keyboard.type('coverage');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => window.__scene.getScene().order.length === 3, null, { timeout: 5000 });
+      s = await doc();
+      const text = Object.values(s.objects).find((o) => o.type === 'shape.text');
+      assert.ok(text && text.data.text === 'coverage', 'the committed text landed as an object');
+      await page.evaluate(() => window.__scene.undo());
+      s = await doc();
+      assert.equal(s.order.length, 2, 'one undo removed the text object');
+      assert.equal(Object.values(s.objects).some((o) => o.type === 'shape.text'), false, 'the text is gone');
+
+      // Everything above was undone: the board is exactly the two setup strokes.
+      const final = await doc();
+      assert.deepEqual([...final.order].sort(), [...ids].sort(), 'the board ends exactly as the setup left it');
+      await shot(page, 'ac-mutating-controls');
+      return 'duplicate, delete, back, front, stroke colour, stroke width, text commit — each reverted by one undo';
+    },
+  );
+
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;
 } catch (error) {
   console.error('\nFATAL:', error instanceof Error ? error.stack : error);

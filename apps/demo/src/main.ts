@@ -70,7 +70,7 @@ const editor = new WhiteboardEditor({
   textAriaLabel: () => i18n.t('text.ariaLabel'),
 });
 
-const chrome = createChrome({
+let chrome = createChrome({
   toolbar,
   statusbar,
   editor,
@@ -214,6 +214,8 @@ declare global {
       setChromeVisible(visible: boolean): void;
       isChromeVisible(): boolean;
       setStatus(key: MessageKey, params?: MessageParams): void;
+      /** Remount the chrome with the language table cut to `count` entries (O2). */
+      setLanguageCount(count: number): void;
     };
   }
 }
@@ -222,4 +224,20 @@ window.__chrome = {
   setChromeVisible: (visible) => chrome.setChromeVisible(visible),
   isChromeVisible: () => chrome.isChromeVisible(),
   setStatus: (key, params) => chrome.setStatus(key, params),
+  // The reference host ships four languages; a host that ships fewer must not
+  // get a dead language control (O2). Destroying and re-creating the chrome is
+  // exactly what a host changing its language table would do.
+  setLanguageCount: (count) => {
+    chrome.destroy();
+    const languages = i18n.languages.slice(0, Math.max(0, count));
+    chrome = createChrome({
+      toolbar,
+      statusbar,
+      editor,
+      i18n: { ...i18n, languages },
+      theme: THEME,
+      statusHint: DEBUG_HINT,
+    });
+    chrome.setStatus('status.newScene');
+  },
 };

@@ -325,3 +325,56 @@ describe('store: scene handle', () => {
     expect(store.getState().order).toEqual(['a', 'b']);
   });
 });
+
+describe('store: applyDelta error reporting (O1)', () => {
+  /** `createStore` types the input as `SceneDelta`; the corrupt cases are not. */
+  const bad = (value: unknown): Parameters<SceneStore['applyDelta']>[0] => value as never;
+
+  it('reports a corrupt frame through onError, changes nothing, and never throws', () => {
+    const errors: [unknown, string][] = [];
+    const store = createStore({ onError: (error, context) => errors.push([error, context]) });
+    const object = rect('peer', 0, 0);
+    const delta = { added: [object], order: [object.id] };
+
+    expect(store.applyDelta(delta)).toBe(true);
+
+    // Not an object at all; a field that should be an array; entries nothing
+    // could apply. All three are corruption: the sender got the payload wrong,
+    // and a host counting dropped frames has to hear about each one.
+    expect(store.applyDelta(bad(null))).toBe(false);
+    expect(store.applyDelta(bad({ added: 42 }))).toBe(false);
+    expect(store.applyDelta(bad({ added: [{ garbage: true }] }))).toBe(false);
+
+    expect(errors).toHaveLength(3);
+    for (const [error, context] of errors) {
+      expect(error).toBeInstanceOf(TypeError);
+      expect(context).toBe('applyDelta');
+    }
+    // The corrupt frames changed nothing and left no history.
+    expect(store.getState().order).toEqual(['peer']);
+    expect(store.canUndo()).toBe(false);
+  });
+
+  it('never reports a duplicate frame, and an empty frame is a benign no-op', () => {
+    const errors: unknown[] = [];
+    const store = createStore({ onError: (error) => errors.push(error) });
+    const object = rect('peer', 0, 0);
+    const delta = { added: [object], order: [object.id] };
+
+    expect(store.applyDelta(delta)).toBe(true);
+    // Replays are idempotence working as designed, not errors; a frame that is
+    // well-shaped but carries nothing is ordinary transport noise.
+    for (let i = 0; i < 3; i += 1) expect(store.applyDelta(delta)).toBe(false);
+    expect(store.applyDelta(bad({}))).toBe(false);
+    expect(store.applyDelta(bad({ added: [] }))).toBe(false);
+    expect(errors).toHaveLength(0);
+    expect(store.getState().order).toEqual(['peer']);
+  });
+
+  it('stays silent and keeps R4 when the host supplied no onError', () => {
+    const store = createStore();
+    expect(store.applyDelta(bad(null))).toBe(false);
+    expect(store.applyDelta(bad({ added: 42 }))).toBe(false);
+    expect(store.getState().order).toEqual([]);
+  });
+});
