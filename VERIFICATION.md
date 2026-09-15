@@ -6,11 +6,13 @@
 > plain history, not as a resolvable reference.
 
 > **This file is a log, newest first.** The current state of the project is the
-> [0.2.1 run (bug-log O1/O2/O3 + toolbar coverage)](#1-021--bug-log-o1o2o3-and-mutating-control-coverage-2026-09-15-current) right below:
-> **148 unit tests, 29/29 end-to-end assertions, both demo pages building**. Everything after it is
-> kept as history — §2 is the 0.2.0 run (P1 + R11, 144/26), §3 the v0.2 host-readiness run (137
-> tests, 24/24... recorded as 128 at the time), §4 the i18n-era run (20/20) and §5 the original
-> v0.1 record (16/16). Where any of them disagree with the newest, the newest wins.
+> [0.2.2 run (wheel zoom, custom pickers, R13 baselines)](#1-022--wheel-zoom-custom-pickers-and-r13-baseline-application-2026-09-15-current) right below:
+> **164 unit tests, 32/32 end-to-end assertions, both demo pages building, all three packages
+> published to npm at 0.2.2 with SLSA provenance**. Everything after it is kept as history —
+> §2 is the 0.2.1 run (bug-log O1/O2/O3, 148/29), §3 the 0.2.0 run (P1 + R11, 144/26), §4 the
+> v0.2 host-readiness run (137 tests, 24/24... recorded as 128 at the time), §5 the i18n-era run
+> (20/20) and §6 the original v0.1 record (16/16). Where any of them disagree with the newest,
+> the newest wins.
 
 Everything below was executed in this directory on the staging machine. Raw output for the
 end-to-end run is in `.artifacts/e2e-report.json`; screenshots are in `.artifacts/`.
@@ -21,7 +23,50 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ---
 
-## 1. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15, current)
+## 1. 0.2.2 — wheel zoom, custom pickers, and R13 baseline application (2026-09-15, current)
+
+Scope: mouse-wheel zoom slowdown with `WheelEvent.deltaMode` normalization (T1), custom
+stroke/fill colour pickers (T2), and R13 — a whole document applies through the delta path
+(`diffScenes`, the editor/viewer baseline APIs, chrome save/load-baseline buttons, 4 new copy
+keys 44→48) (T3) — plus the `localeDirection` CLDR-stability fix the first-ever CI release run
+caught. All manifests at `0.2.2`, peers `^0.2.2` (the fifth manifest, `apps/demo`, is private
+and unpublishable but keeps the same number). No document-shape change: `SCENE_VERSION` stays
+2, no migration.
+
+| Step | Result |
+| --- | --- |
+| `pnpm typecheck` | PASS — 5 TypeScript projects (core, konva, ui, demo, tests), zero errors |
+| `pnpm test` | PASS — **164/164 in 9 files** (`records: diffScenes` 7 new, `store: baseline apply` 4 new, plus the `viewport: wheel zoom factor` suite) |
+| `pnpm e2e` | PASS — **32/32 assertions** (a–z, aa–ac, plus new `ad` wheel-step, `ae` custom pickers, `af` baseline), `pageErrors = []` |
+| publish workflow (release `published`) | SUCCESS on the first real run of the trusted-publisher/OIDC path — gate (typecheck + test + build) on Node 20, then `pnpm publish --provenance` for all three packages |
+| `npm view` + headless consumer smoke | PASS — `@coslate/core`, `@coslate/konva`, `@coslate/ui` at 0.2.2 with SLSA provenance attestations; a consumer installs from the registry, converges a `diffScenes`/`applyDelta` round-trip (content, order, z-mirrors), and finds the baseline APIs + the 4 new chrome keys in the published types |
+
+Evidence, per the acceptance standard:
+
+- **Wheel zoom.** `wheelZoomFactor(deltaY, deltaMode, fine)` in `core/src/viewport.ts`
+  normalizes `deltaMode` (line ×16, page ×100) before the exponential step: a plain ~100 px
+  notch ≈ ×1.20 (was ≈×1.82), ctrl/meta ≈ ×1.06, and the same constants in every browser.
+  Proven by the table-driven unit suite and e2e **`ad`**.
+- **Custom pickers.** e2e **`ae`** drives the hidden `<input type="color">` through its
+  `change` event: a non-palette stroke/fill lights only the custom swatch (no fixed swatch
+  pressed), the object's data updates, and one undo reverts each pick.
+- **R13 — baseline through the delta path.** `diffScenes` strips the denormalized `z` mirror
+  (the `order` array is the sole paint-order carrier), so an already-converged baseline diffs
+  to `null` and repaints nothing. Unit suites `records: diffScenes` and `store: baseline apply`
+  prove convergence, replay no-op, undo-depth preservation across an application, the redo
+  fork (same clearRedo safety rule as any remote change), and read-only ingestion; e2e **`af`**
+  proves it at page level — pending local edits stay undoable across a baseline application,
+  `FUTURE_VERSION` refuses with a reason and leaves the board untouched, the chrome
+  save/load-baseline buttons round-trip a real baseline, and the viewer converges too.
+- **CI caught what local Node could not.** The first publish-workflow run failed its gate on
+  Node 20: `localeDirection('ku-Arab')` trusted `Intl.Locale.prototype.textInfo`, whose answer
+  depends on the runtime's CLDR vintage (older data says `'ltr'`). Fixed by letting an explicit
+  script subtag beat `textInfo` for the well-known scripts; verified against the built dist on
+  Node 20 and Node 24, and the re-run published green.
+
+---
+
+## 2. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15)
 
 Scope: the three open issues in `.design/bug-log.md`, plus the page-level coverage the clear-button
 regression showed was missing. All manifests at `0.2.1`, peers `^0.2.1` (the fifth manifest,
@@ -55,7 +100,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 2. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
+## 3. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
 
 Scope: P1 (version reflects the breaking release) and R11 (the visual contract: host-settable page
 background and grid, PNG export follows), per `.design/requirements.md` §1–§2. Status rows and the
@@ -84,7 +129,7 @@ R11 evidence, as the acceptance standard requires:
 
 ---
 
-## 3. v0.2 — host-readiness (2026-09-15)
+## 4. v0.2 — host-readiness (2026-09-15)
 
 Requirement source: CoStage's `docs/COSLATE-REPLACEMENT-REQUIREMENTS.md` (R1–R10, C1–C8, D1–D4).
 Requirement-by-requirement mapping: `.design/requirements-mapping.md` (local design docs).
@@ -149,7 +194,7 @@ editor — that is the chrome, and an audience does not download it.
 
 ---
 
-## 4. Re-verification — 2026-09-14 (i18n era, superseded)
+## 5. Re-verification — 2026-09-14 (i18n era, superseded)
 
 > Historical: this run predates v0.2 below. It recorded 97 unit tests and 20 e2e assertions; the
 > v0.2 run has 128 and 24. Kept because it is the evidence for the icon toolbar, the narrow-viewport
@@ -334,7 +379,7 @@ the text tool reads the placeholder out of the live `<textarea>` and requires `�
 the localized copy reaches the runtime rather than sitting in a constant. Screenshot:
 `.artifacts/t-zh-hant.png`.
 
-## 5. Original staging record — the v0.1 run (superseded)
+## 6. Original staging record — the v0.1 run (superseded)
 
 > The first verification run, kept as history: 72 unit tests and 16 e2e assertions against
 > the code as it stood at 0.1.0. Superseded by §1 in every respect.

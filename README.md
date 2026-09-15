@@ -45,7 +45,7 @@ Node 20+ and pnpm 9+.
 
 ### Versions and breaking changes
 
-Current release: **0.2.1** — see [CHANGELOG.md](./CHANGELOG.md) for the full list. The two breaking
+Current release: **0.2.2** — see [CHANGELOG.md](./CHANGELOG.md) for the full list. The two breaking
 changes an upgrade to 0.2 needs to know about:
 
 - **`Scene` is v2 and the camera left the document.** The serialized document no longer carries a
@@ -85,6 +85,13 @@ editor.clearAll();        // wipe the board as ONE undoable step (clearing a roo
 editor.resetDocument();   // destructive reset for "open a different board" (history dropped)
 // `clear()` still compiles as a deprecated alias of resetDocument(); new code should
 // say which of the two it means.
+
+// A whole document (a stored baseline, a reconnect snapshot) converges through the
+// delta path: idempotent, atomic, never an undo step, and a free no-op when the
+// board already matches. `loadBaseline` never throws — an unreadable blob reports
+// { status: 'empty', reason } and leaves the board untouched.
+const baseline = editor.getBaseline();   // compact serialized document
+editor.loadBaseline(baseline);
 ```
 
 Every mutation goes through a command, so the same API works for tools, menus, keyboard
