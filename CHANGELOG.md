@@ -6,6 +6,16 @@ anything may still change, but breaking changes are called out explicitly.
 
 ## 0.2.2 (unreleased)
 
+### Added
+
+- **Custom colour pickers for stroke and fill.** Next to the fixed palette and
+  fill options, a rainbow swatch opens the native colour picker and accepts any
+  colour; the swatch shows the current custom colour and lights only while the
+  active colour is not one of the fixed options. Deliberately `change`-event
+  only: one pick is one undo step, so there is no live preview while dragging
+  in the native picker. New chrome keys `style.strokeCustom` / `style.fillCustom`
+  (demo catalogs ship all four locales). Proven by e2e `ae`.
+
 ### Changed
 
 - **Mouse-wheel zoom is deliberately slower and per-browser consistent.** A plain wheel notch

@@ -1777,14 +1777,25 @@ try {
       const doc = () => page.evaluate(() => window.__scene.getScene());
       const styleOf = () => page.evaluate(() => ({ ...window.__scene.editor.style }));
 
-      // A shape to restyle, drawn for real with the rect tool.
+      // A shape to restyle, drawn for real with the rect tool. The board is not
+      // necessarily empty here (autosave restores earlier checks' work), so the
+      // new object is found by diffing the order array, not by exact length.
+      const orderBefore = (await doc()).order;
       await page.click('[data-testid="tool-rect"]');
       await page.mouse.move(at(140, 160).x, at(140, 160).y);
       await page.mouse.down();
       await page.mouse.move(at(320, 280).x, at(320, 280).y, { steps: 8 });
       await page.mouse.up();
-      await page.waitForFunction(() => window.__scene.getScene().order.length === 1, null, { timeout: 5000 });
-      const rectId = (await doc()).order[0];
+      await page.waitForFunction(
+        (before) => {
+          const order = window.__scene.getScene().order;
+          return order.length === before.length + 1 ? order : false;
+        },
+        orderBefore,
+        { timeout: 5000 },
+      );
+      const rectId = (await doc()).order.find((id) => !orderBefore.includes(id));
+      await page.evaluate((id) => window.__scene.setSelection([id]), rectId);
 
       // Initial: the default ink is a palette colour, so no custom swatch is pressed.
       assert.equal(
@@ -1798,28 +1809,43 @@ try {
         'fill custom swatch starts unpressed (default fill is none)',
       );
 
-      // Pick a stroke colour the palette does not offer.
-      await page.fill('[data-testid="stroke-custom-input"]', '#123456');
+      // Pick a stroke colour the palette does not offer. The rect inherited
+      // whatever stroke the tool carried, so the undo target is captured live.
+      // The picker input is display:none (it is opened by the swatch button), so
+      // fill() refuses it — the same compromise class as setInputFiles in p:
+      // set the value, then let the real production 'change' listener run.
+      const pick = (testid, value) =>
+        page.evaluate(
+          ([id, v]) => {
+            const input = document.querySelector(`[data-testid="${id}"]`);
+            input.value = v;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          },
+          [testid, value],
+        );
+      const strokeBefore = (await doc()).objects[rectId].data.stroke;
+      const fillBefore = (await doc()).objects[rectId].data.fill;
+      await pick('stroke-custom-input', '#123456');
       let style = await styleOf();
       assert.equal(style.stroke, '#123456', 'custom stroke colour reached the editor style');
-      assert.equal(
-        await page.getAttribute('[data-testid="stroke-custom"]', 'aria-pressed'),
-        'true',
-        'custom swatch pressed for a non-palette stroke',
+      const litStroke = await page.evaluate(() =>
+        [...document.querySelectorAll('#toolbar [data-testid^="stroke-"]')]
+          .filter((node) => node.getAttribute('aria-pressed') === 'true')
+          .map((node) => node.getAttribute('data-testid')),
+      );
+      assert.deepEqual(
+        litStroke,
+        ['stroke-custom'],
+        'for a non-palette stroke exactly one swatch lights: the custom one',
       );
       assert.equal(
-        await page.getAttribute('[data-testid="stroke-e8eaed"]', 'aria-pressed'),
-        'false',
-        'no palette swatch lights for a non-palette stroke',
-      );
-      assert.equal(
-        await page.getAttribute('[data-testid="stroke-custom-input"]', 'value'),
+        await page.evaluate(() => document.querySelector('[data-testid="stroke-custom-input"]').value),
         '#123456',
         'the picker reopens at the current custom colour',
       );
       let scene = await doc();
       assert.equal(
-        scene.objects[rectId].stroke,
+        scene.objects[rectId].data.stroke,
         '#123456',
         'restyling the selection applied the custom stroke to the object',
       );
@@ -1827,30 +1853,30 @@ try {
       // One undo reverts the restyle — the object itself stays.
       await page.evaluate(() => window.__scene.undo());
       scene = await doc();
-      assert.equal(scene.objects[rectId].stroke, '#e8eaed', 'one undo restored the previous stroke');
-      assert.equal(scene.order.length, 1, 'undo reverted the recolour, not the object');
+      assert.equal(scene.objects[rectId].data.stroke, strokeBefore, 'one undo restored the previous stroke');
+      assert.ok(scene.objects[rectId], 'undo reverted the recolour, not the object');
       await page.evaluate(() => window.__scene.redo());
 
       // Pick a custom fill; the fixed options go dark, the object fills.
-      await page.fill('[data-testid="fill-custom-input"]', '#7f4a2d');
+      await pick('fill-custom-input', '#7f4a2d');
       style = await styleOf();
       assert.equal(style.fill, '#7f4a2d', 'custom fill reached the editor style');
-      assert.equal(
-        await page.getAttribute('[data-testid="fill-custom"]', 'aria-pressed'),
-        'true',
-        'fill custom swatch pressed for a non-option fill',
+      const litFill = await page.evaluate(() =>
+        [...document.querySelectorAll('#toolbar [data-testid^="fill-"]')]
+          .filter((node) => node.getAttribute('aria-pressed') === 'true')
+          .map((node) => node.getAttribute('data-testid')),
       );
-      assert.equal(
-        await page.getAttribute('[data-testid="fill-none"]', 'aria-pressed'),
-        'false',
-        'the fixed fill options do not light for a custom fill',
+      assert.deepEqual(
+        litFill,
+        ['fill-custom'],
+        'for a non-option fill exactly one swatch lights: the custom one',
       );
       scene = await doc();
-      assert.equal(scene.objects[rectId].fill, '#7f4a2d', 'the object took the custom fill');
+      assert.equal(scene.objects[rectId].data.fill, '#7f4a2d', 'the object took the custom fill');
 
       await page.evaluate(() => window.__scene.undo());
       scene = await doc();
-      assert.equal(scene.objects[rectId].fill, null, 'one undo restored the unfilled shape');
+      assert.equal(scene.objects[rectId].data.fill, fillBefore, 'one undo restored the previous fill');
 
       await shot(page, 'ae-custom-colours');
       return 'stroke #123456 and fill #7f4a2d picked past the palette, each reverted by one undo';
