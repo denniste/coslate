@@ -26,11 +26,13 @@ export type {
   SceneObjectOf,
   Size,
   StrokeData,
+  StrokeStyle,
   TextData,
   Viewport,
 } from './types.js';
 
 export {
+  dashPattern,
   defaultData,
   isObjectOfType,
   OBJECT_TYPES,

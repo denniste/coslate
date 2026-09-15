@@ -6,6 +6,20 @@ anything may still change, but breaking changes are called out explicitly.
 
 ## 0.2.3 (unreleased)
 
+### Added
+
+- **Line styles: solid, dashed, and dash-dot patterns.** The style strip gains a
+  line-style group whose three glyphs preview the pattern they set. Every stroked
+  object (rect, ellipse, line, arrow, freehand ink) carries a new
+  `strokeStyle: 'solid' | 'dashed' | 'dashDot'` data field — omitted/missing means
+  `solid`, so existing documents render unchanged with no migration. Dash
+  patterns scale with the stroke width (`dashPattern` in `@coslate/core`), and
+  `strokeScaleEnabled(false)` keeps them screen-constant under zoom. Text never
+  receives the field; the editor style and tool presets carry it like any other
+  style key, so ink drawn under a preset inherits its pattern. +3 chrome copy
+  keys (`style.lineSolid` / `style.lineDashed` / `style.lineDashDot`, 48→51).
+  Proven by the `stroke style model` / `dashPattern` unit suites and e2e `ag`.
+
 ### Changed
 
 - **The style strip's "invisible on the dark chrome" samples are gone.** The

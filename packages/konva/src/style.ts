@@ -6,13 +6,14 @@
  * brush in your hand — and it never belongs in an undo step.
  */
 
-import { objectPath, type JSONPatchOp, type Paint, type SceneObject } from '@coslate/core';
+import { objectPath, type JSONPatchOp, type Paint, type SceneObject, type StrokeStyle } from '@coslate/core';
 
 export interface EditorStyle {
   stroke: string;
   /** `null` means "no fill". */
   fill: Paint;
   strokeWidth: number;
+  strokeStyle: StrokeStyle;
   fontSize: number;
   fontFamily: string;
 }
@@ -21,6 +22,7 @@ export const DEFAULT_STYLE: EditorStyle = {
   stroke: '#e8eaed',
   fill: null,
   strokeWidth: 2,
+  strokeStyle: 'solid',
   fontSize: 20,
   fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, sans-serif',
 };
@@ -38,6 +40,9 @@ export const STROKE_PALETTE: readonly string[] = [
 ];
 
 export const STROKE_WIDTHS: readonly number[] = [1, 2, 4, 8];
+
+/** Line-style options, in strip order. Index 0 is the default. */
+export const STROKE_STYLES: readonly StrokeStyle[] = ['solid', 'dashed', 'dashDot'];
 
 export function cloneStyle(style: EditorStyle): EditorStyle {
   return { ...style };
@@ -59,12 +64,14 @@ export function styleDataFor(object: SceneObject, style: EditorStyle, keys: read
       if (wants.has('fill')) data.fill = style.fill;
       if (wants.has('stroke')) data.stroke = style.stroke;
       if (wants.has('strokeWidth')) data.strokeWidth = style.strokeWidth;
+      if (wants.has('strokeStyle')) data.strokeStyle = style.strokeStyle;
       break;
     case 'shape.line':
     case 'shape.arrow':
     case 'freehand.stroke':
       if (wants.has('stroke')) data.stroke = style.stroke;
       if (wants.has('strokeWidth')) data.strokeWidth = style.strokeWidth;
+      if (wants.has('strokeStyle')) data.strokeStyle = style.strokeStyle;
       break;
     case 'shape.text':
       if (wants.has('stroke')) data.fill = style.stroke;

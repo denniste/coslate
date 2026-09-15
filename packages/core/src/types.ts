@@ -31,10 +31,32 @@ export type ObjectType =
 /** Colour values are plain CSS colour strings, or `null` for "no paint". */
 export type Paint = string | null;
 
+/**
+ * Stroke pattern for an object's outline or path. `solid` is the default and
+ * the only style documents from before this field existed carry — renderers
+ * must treat a missing value as `solid`, so the wire format stays compatible
+ * without a scene version bump.
+ */
+export type StrokeStyle = 'solid' | 'dashed' | 'dashDot';
+
+/**
+ * The canonical dash pattern for a stroke style at a given width: dashes stay
+ * proportional to the line they travel on. `solid` is an empty pattern.
+ * Renderers that keep the stroke a constant screen thickness (Konva's
+ * `strokeScaleEnabled(false)`) should derive the pattern from the unstretched
+ * `strokeWidth`, as the editor does.
+ */
+export function dashPattern(style: StrokeStyle | undefined, strokeWidth: number): number[] {
+  if (style === undefined || style === 'solid') return [];
+  const w = Math.max(0.5, strokeWidth);
+  return style === 'dashed' ? [4 * w, 3 * w] : [4 * w, 2 * w, w, 2 * w];
+}
+
 export interface RectData {
   fill: Paint;
   stroke: Paint;
   strokeWidth: number;
+  strokeStyle: StrokeStyle;
   cornerRadius: number;
 }
 
@@ -42,6 +64,7 @@ export interface EllipseData {
   fill: Paint;
   stroke: Paint;
   strokeWidth: number;
+  strokeStyle: StrokeStyle;
 }
 
 /**
@@ -54,6 +77,7 @@ export interface LineData {
   points: number[];
   stroke: Paint;
   strokeWidth: number;
+  strokeStyle: StrokeStyle;
 }
 
 export interface ArrowData extends LineData {
@@ -74,6 +98,7 @@ export interface StrokeData {
   points: number[];
   stroke: Paint;
   strokeWidth: number;
+  strokeStyle: StrokeStyle;
 }
 
 /** Maps an object type to the payload it carries in `SceneObject.data`. */
@@ -206,16 +231,17 @@ export function defaultData<T extends ObjectType>(type: T): ObjectDataMap[T];
 export function defaultData(type: ObjectType): ObjectData {
   switch (type) {
     case 'shape.rect':
-      return { fill: null, stroke: '#e6e6e6', strokeWidth: 2, cornerRadius: 0 };
+      return { fill: null, stroke: '#e6e6e6', strokeWidth: 2, strokeStyle: 'solid', cornerRadius: 0 };
     case 'shape.ellipse':
-      return { fill: null, stroke: '#e6e6e6', strokeWidth: 2 };
+      return { fill: null, stroke: '#e6e6e6', strokeWidth: 2, strokeStyle: 'solid' };
     case 'shape.line':
-      return { points: [0, 0, 0, 0], stroke: '#e6e6e6', strokeWidth: 2 };
+      return { points: [0, 0, 0, 0], stroke: '#e6e6e6', strokeWidth: 2, strokeStyle: 'solid' };
     case 'shape.arrow':
       return {
         points: [0, 0, 0, 0],
         stroke: '#e6e6e6',
         strokeWidth: 2,
+        strokeStyle: 'solid',
         pointerLength: 12,
         pointerWidth: 10,
       };
@@ -228,7 +254,7 @@ export function defaultData(type: ObjectType): ObjectData {
         align: 'left',
       };
     case 'freehand.stroke':
-      return { points: [], stroke: '#e6e6e6', strokeWidth: 2 };
+      return { points: [], stroke: '#e6e6e6', strokeWidth: 2, strokeStyle: 'solid' };
     default: {
       const never: never = type;
       throw new Error(`CoSlate: unknown object type ${String(never)}`);

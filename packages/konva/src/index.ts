@@ -26,6 +26,7 @@ export {
   cloneStyle,
   DEFAULT_STYLE,
   STROKE_PALETTE,
+  STROKE_STYLES,
   STROKE_WIDTHS,
   styleDataFor,
   stylePatchOps,

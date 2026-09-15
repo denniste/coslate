@@ -80,6 +80,7 @@ export class PenTool implements Tool {
         points,
         stroke: this.host.style.stroke,
         strokeWidth: this.host.style.strokeWidth,
+        strokeStyle: this.host.style.strokeStyle,
       },
     });
     this.host.store.commit({

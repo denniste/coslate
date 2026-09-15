@@ -1,4 +1,4 @@
-import { STROKE_PALETTE, STROKE_WIDTHS, TOOL_NAMES, type ToolName } from '@coslate/konva';
+import { STROKE_PALETTE, STROKE_STYLES, STROKE_WIDTHS, TOOL_NAMES, type ToolName } from '@coslate/konva';
 import { icon, type IconName } from './icons.js';
 import { ensureChromeStyles } from './styles.js';
 import { applyTheme, clearTheme } from './theme.js';
@@ -109,6 +109,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
   const strokeButtons = new Map<string, HTMLButtonElement>();
   const fillButtons = new Map<string, HTMLButtonElement>();
   const widthButtons = new Map<number, HTMLButtonElement>();
+  const lineStyleButtons = new Map<string, HTMLButtonElement>();
 
   function iconButton(button: IconButtonOptions): HTMLButtonElement {
     const node = el('button', { type: 'button', class: 'icon-button', 'data-testid': button.testId });
@@ -417,6 +418,27 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     style.append(node);
   }
 
+  style.append(separator());
+  const LINE_STYLE_META = {
+    solid: { icon: 'lineSolid', key: 'style.lineSolid' },
+    dashed: { icon: 'lineDashed', key: 'style.lineDashed' },
+    dashDot: { icon: 'lineDashDot', key: 'style.lineDashDot' },
+  } as const;
+  for (const lineStyle of STROKE_STYLES) {
+    const meta = LINE_STYLE_META[lineStyle];
+    const node = el('button', {
+      type: 'button',
+      class: 'width-button',
+      'data-testid': `linestyle-${lineStyle}`,
+      'aria-pressed': 'false',
+    });
+    node.append(icon(meta.icon, 18));
+    node.addEventListener('click', () => editor.setStyle({ strokeStyle: lineStyle }));
+    tooltip.bind(node, () => ({ label: t(meta.key) }));
+    lineStyleButtons.set(lineStyle, node);
+    style.append(node);
+  }
+
   // The toolbar fills its container; the inner wrapper carries the padding so
   // the container-query width is the true available width (see styles.ts).
   const main = el('div', { class: 'toolbar-main' });
@@ -474,6 +496,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     setPressed(strokeButtons, editor.style.stroke);
     setPressed(fillButtons, String(editor.style.fill));
     setPressed(widthButtons, editor.style.strokeWidth);
+    setPressed(lineStyleButtons, editor.style.strokeStyle);
 
     // The custom pickers carry the pressed state for any value the fixed
     // options do not cover; the input opens at the current colour so picking

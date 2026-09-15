@@ -1,5 +1,13 @@
 import Konva from 'konva';
-import { isObjectOfType, type Paint, type SceneObject, type Size, type TextData } from '@coslate/core';
+import {
+  dashPattern,
+  isObjectOfType,
+  type Paint,
+  type SceneObject,
+  type Size,
+  type StrokeStyle,
+  type TextData,
+} from '@coslate/core';
 
 /**
  * Scene object -> Konva node.
@@ -17,7 +25,13 @@ import { isObjectOfType, type Paint, type SceneObject, type Size, type TextData 
 
 const TEXT_LINE_HEIGHT = 1;
 
-function applyPaint(node: Konva.Shape, fill: Paint, stroke: Paint, strokeWidth: number): void {
+function applyPaint(
+  node: Konva.Shape,
+  fill: Paint,
+  stroke: Paint,
+  strokeWidth: number,
+  strokeStyle: StrokeStyle | undefined,
+): void {
   if (fill === null) {
     node.fillEnabled(false);
   } else {
@@ -31,6 +45,7 @@ function applyPaint(node: Konva.Shape, fill: Paint, stroke: Paint, strokeWidth: 
     node.stroke(stroke);
   }
   node.strokeWidth(strokeWidth);
+  node.dash(dashPattern(strokeStyle, strokeWidth));
   // Resizing an object must not turn a 2px outline into a 40px slab.
   node.strokeScaleEnabled(false);
   node.perfectDrawEnabled(false);
@@ -57,7 +72,7 @@ function baseShapeConfig(object: SceneObject): Konva.ShapeConfig {
 function createRect(object: SceneObject): Konva.Shape {
   const node = new Konva.Rect({ ...baseShapeConfig(object), width: object.width, height: object.height });
   if (isObjectOfType(object, 'shape.rect')) {
-    applyPaint(node, object.data.fill, object.data.stroke, object.data.strokeWidth);
+    applyPaint(node, object.data.fill, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
     node.cornerRadius(object.data.cornerRadius);
   }
   return node;
@@ -84,7 +99,7 @@ function createEllipse(object: SceneObject): Konva.Shape {
     },
   });
   if (isObjectOfType(object, 'shape.ellipse')) {
-    applyPaint(node, object.data.fill, object.data.stroke, object.data.strokeWidth);
+    applyPaint(node, object.data.fill, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
   }
   return node;
 }
@@ -99,7 +114,7 @@ function createLine(object: SceneObject): Konva.Shape {
   });
   if (isObjectOfType(object, 'shape.line')) {
     node.points(object.data.points);
-    applyPaint(node, null, object.data.stroke, object.data.strokeWidth);
+    applyPaint(node, null, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
   }
   return node;
 }
@@ -117,7 +132,7 @@ function createArrow(object: SceneObject): Konva.Shape {
     node.points(object.data.points);
     node.pointerLength(object.data.pointerLength);
     node.pointerWidth(object.data.pointerWidth);
-    applyPaint(node, null, object.data.stroke, object.data.strokeWidth);
+    applyPaint(node, null, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
     // The arrowhead is filled with the stroke colour.
     node.fill(object.data.stroke ?? '#000');
     node.fillEnabled(object.data.stroke !== null);
@@ -159,7 +174,7 @@ function createStroke(object: SceneObject): Konva.Shape {
   });
   if (isObjectOfType(object, 'freehand.stroke')) {
     node.points(object.data.points);
-    applyPaint(node, null, object.data.stroke, object.data.strokeWidth);
+    applyPaint(node, null, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
   }
   return node;
 }
@@ -205,20 +220,20 @@ export function updateObjectNode(node: Konva.Shape, object: SceneObject): void {
       rect.width(object.width);
       rect.height(object.height);
       rect.cornerRadius(object.data.cornerRadius);
-      applyPaint(rect, object.data.fill, object.data.stroke, object.data.strokeWidth);
+      applyPaint(rect, object.data.fill, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
       break;
     }
     case 'shape.ellipse': {
       if (!isObjectOfType(object, 'shape.ellipse')) break;
       node.width(object.width);
       node.height(object.height);
-      applyPaint(node, object.data.fill, object.data.stroke, object.data.strokeWidth);
+      applyPaint(node, object.data.fill, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
       break;
     }
     case 'shape.line': {
       if (!isObjectOfType(object, 'shape.line')) break;
       (node as Konva.Line).points(object.data.points);
-      applyPaint(node, null, object.data.stroke, object.data.strokeWidth);
+      applyPaint(node, null, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
       break;
     }
     case 'shape.arrow': {
@@ -227,7 +242,7 @@ export function updateObjectNode(node: Konva.Shape, object: SceneObject): void {
       arrow.points(object.data.points);
       arrow.pointerLength(object.data.pointerLength);
       arrow.pointerWidth(object.data.pointerWidth);
-      applyPaint(arrow, null, object.data.stroke, object.data.strokeWidth);
+      applyPaint(arrow, null, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
       arrow.fill(object.data.stroke ?? '#000');
       arrow.fillEnabled(object.data.stroke !== null);
       break;
@@ -248,7 +263,7 @@ export function updateObjectNode(node: Konva.Shape, object: SceneObject): void {
     case 'freehand.stroke': {
       if (!isObjectOfType(object, 'freehand.stroke')) break;
       (node as Konva.Line).points(object.data.points);
-      applyPaint(node, null, object.data.stroke, object.data.strokeWidth);
+      applyPaint(node, null, object.data.stroke, object.data.strokeWidth, object.data.strokeStyle);
       break;
     }
     default:

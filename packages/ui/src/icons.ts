@@ -58,6 +58,12 @@ const ICONS = {
   // chrome
   globe:
     '<circle cx="12" cy="12" r="8.2"/><path d="M3.8 12h16.4"/><path d="M12 3.8c2.2 2.4 3.3 5.2 3.3 8.2s-1.1 5.8-3.3 8.2c-2.2-2.4-3.3-5.2-3.3-8.2S9.8 6.2 12 3.8Z"/>',
+
+  // Line-style samples for the style strip: one glyph per pattern, drawn as a
+  // horizontal rule at stroke width so the button previews the dash it sets.
+  lineSolid: '<path d="M4 12h16"/>',
+  lineDashed: '<path d="M4 12h4M11 12h4M18 12h2.5"/>',
+  lineDashDot: '<path d="M4 12h4M11.5 12h2M17 12h4"/>',
   // The custom stroke picker: an unfilled square — stroke reads as the
   // border (iconfont source, native 1024 grid scaled into the 24px viewBox).
   // Grey on the neutral panel; the chrome turns the frame white and lets the

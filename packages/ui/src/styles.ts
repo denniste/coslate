@@ -273,6 +273,12 @@ const STYLESHEET = `
   border-radius: var(--coslate-radius-md);
 }
 
+/* Line-style buttons reuse .width-button's box and states; their glyph is an
+   svg line sample instead of the width dot. */
+.coslate-ui .width-button svg {
+  display: block;
+}
+
 .coslate-ui .width-button:hover:not(:disabled) {
   background: var(--coslate-hover);
 }

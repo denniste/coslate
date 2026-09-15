@@ -2046,6 +2046,125 @@ try {
     },
   );
 
+  // -------------------------------------------------------- ag. line styles
+  await check(
+    'ag',
+    'line-style buttons restyle the selection and preset: dashed and dash-dot each land in one undo',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+      await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+      const canvasBox = await page.locator('.coslate-canvas-host canvas').first().boundingBox();
+      const at = (x, y) => ({ x: canvasBox.x + x, y: canvasBox.y + y });
+      const doc = () => page.evaluate(() => window.__scene.getScene());
+      const litLineStyles = () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('#toolbar [data-testid^="linestyle-"]')]
+            .filter((node) => node.getAttribute('aria-pressed') === 'true')
+            .map((node) => node.getAttribute('data-testid')),
+        );
+
+      // A shape to restyle, drawn for real and found by diffing the order
+      // array — the board may hold earlier checks' autosaved work.
+      const orderBefore = (await doc()).order;
+      await page.click('[data-testid="tool-rect"]');
+      await page.mouse.move(at(140, 160).x, at(140, 160).y);
+      await page.mouse.down();
+      await page.mouse.move(at(320, 280).x, at(320, 280).y, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForFunction(
+        (before) => {
+          const order = window.__scene.getScene().order;
+          return order.length === before.length + 1 ? order : false;
+        },
+        orderBefore,
+        { timeout: 5000 },
+      );
+      const rectId = (await doc()).order.find((id) => !orderBefore.includes(id));
+      await page.evaluate((id) => window.__scene.setSelection([id]), rectId);
+
+      // A fresh page loads the solid default: exactly one strip button lit.
+      assert.deepEqual(
+        await litLineStyles(),
+        ['linestyle-solid'],
+        'the solid default leaves only the solid button pressed',
+      );
+
+      // Dashed: lands on the selection, the preset follows, one undo reverts.
+      await page.click('[data-testid="linestyle-dashed"]');
+      assert.equal(
+        (await page.evaluate(() => ({ ...window.__scene.editor.style }))).strokeStyle,
+        'dashed',
+        'the dashed button set the editor preset',
+      );
+      let scene = await doc();
+      assert.equal(
+        scene.objects[rectId].data.strokeStyle,
+        'dashed',
+        'restyling the selection applied the dashed pattern to the object',
+      );
+      assert.deepEqual(await litLineStyles(), ['linestyle-dashed'], 'exactly the dashed button lights');
+      await page.evaluate(() => window.__scene.undo());
+      scene = await doc();
+      assert.equal(
+        scene.objects[rectId].data.strokeStyle,
+        'solid',
+        'one undo restored the solid pattern on the object',
+      );
+      assert.ok(scene.objects[rectId], 'undo reverted the restyle, not the object');
+
+      // Redo, then dash-dot: the same contract for the second pattern.
+      await page.evaluate(() => window.__scene.redo());
+      await page.click('[data-testid="linestyle-dashDot"]');
+      scene = await doc();
+      assert.equal(
+        scene.objects[rectId].data.strokeStyle,
+        'dashDot',
+        'the dash-dot pattern reached the object after the redo',
+      );
+      assert.deepEqual(await litLineStyles(), ['linestyle-dashDot'], 'exactly the dash-dot button lights');
+      await page.evaluate(() => window.__scene.undo());
+      scene = await doc();
+      assert.equal(
+        scene.objects[rectId].data.strokeStyle,
+        'dashed',
+        'one undo restored the previous (redo-replayed) dashed pattern',
+      );
+
+      // The preset is tool state, not document state: it survives the undo,
+      // and a shape drawn under it inherits the pattern.
+      const orderMid = (await doc()).order;
+      await page.click('[data-testid="tool-rect"]');
+      await page.mouse.move(at(420, 320).x, at(420, 320).y);
+      await page.mouse.down();
+      await page.mouse.move(at(560, 440).x, at(560, 440).y, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForFunction(
+        (before) => {
+          const order = window.__scene.getScene().order;
+          return order.length === before.length + 1 ? order : false;
+        },
+        orderMid,
+        { timeout: 5000 },
+      );
+      const secondId = (await doc()).order.find((id) => !orderMid.includes(id));
+      scene = await doc();
+      assert.equal(
+        scene.objects[secondId].data.strokeStyle,
+        'dashDot',
+        'a shape drawn under the dash-dot preset inherits the pattern',
+      );
+      assert.equal(
+        scene.objects[rectId].data.strokeStyle,
+        'dashed',
+        'the first shape kept its own pattern while the second was drawn',
+      );
+
+      await shot(page, 'ag-line-styles');
+      return 'dashed + dash-dot restyle the selection, each reverts in one undo, the preset passes to new ink';
+    },
+  );
+
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;
 } catch (error) {
   console.error('\nFATAL:', error instanceof Error ? error.stack : error);

@@ -85,7 +85,7 @@ export class ShapeTool implements Tool {
         y: Math.min(start.y, end.y),
         width,
         height,
-        data: { fill: style.fill, stroke: style.stroke, strokeWidth: style.strokeWidth },
+        data: { fill: style.fill, stroke: style.stroke, strokeWidth: style.strokeWidth, strokeStyle: style.strokeStyle },
       });
       this.host.store.commit({ type: 'object.create', patch: addObjectOps(object), label: LABELS[this.kind] });
       return;
@@ -99,7 +99,7 @@ export class ShapeTool implements Tool {
       y: bounds.y,
       width: Math.max(bounds.width, 0.5),
       height: Math.max(bounds.height, 0.5),
-      data: { points, stroke: style.stroke, strokeWidth: style.strokeWidth },
+      data: { points, stroke: style.stroke, strokeWidth: style.strokeWidth, strokeStyle: style.strokeStyle },
     });
     this.host.store.commit({ type: 'object.create', patch: addObjectOps(object), label: LABELS[this.kind] });
   }
