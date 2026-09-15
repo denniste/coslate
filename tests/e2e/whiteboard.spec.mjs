@@ -1715,6 +1715,55 @@ try {
     },
   );
 
+  // ------------------------------------------------------- ad. wheel zoom step
+  await check(
+    'ad',
+    'wheel zoom steps are deliberate: ~x1.2 per plain notch, finer with ctrl, symmetric out',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+      await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+      const canvasBox = await page.locator('#canvas-host').boundingBox();
+      await page.mouse.move(canvasBox.x + 400, canvasBox.y + 300);
+
+      // 240 px of wheel travel at the new rate is ~x1.54; the old constants
+      // made it ~x4.2 (clamped) — assert the notch lands in a deliberate band.
+      const beforePlain = await getViewport(page);
+      await page.mouse.wheel(0, -240);
+      const afterPlain = await getViewport(page);
+      const plainRatio = afterPlain.scale / beforePlain.scale;
+      assert.ok(
+        plainRatio >= 1.35 && plainRatio <= 1.75,
+        `plain wheel 240px zoomed ${round(plainRatio)}x — expected the ~x1.54 band ([1.35, 1.75])`,
+      );
+
+      // ctrl/meta is the fine step (and the shape a trackpad pinch arrives in).
+      const beforeFine = afterPlain;
+      await page.keyboard.down('Control');
+      await page.mouse.wheel(0, -240);
+      await page.keyboard.up('Control');
+      const afterFine = await getViewport(page);
+      const fineRatio = afterFine.scale / beforeFine.scale;
+      assert.ok(
+        fineRatio >= 1.08 && fineRatio <= 1.25,
+        `ctrl+wheel 240px zoomed ${round(fineRatio)}x — expected the fine ~x1.15 band ([1.08, 1.25])`,
+      );
+      assert.ok(fineRatio < plainRatio, 'ctrl+wheel must be finer than plain wheel');
+
+      // Scrolling out is symmetric: the same travel divides by the same factor.
+      await page.mouse.wheel(0, 240);
+      const afterOut = await getViewport(page);
+      const outRatio = afterOut.scale / afterFine.scale;
+      assert.ok(
+        Math.abs(outRatio - 1 / plainRatio) < 0.02,
+        `wheeling back out divided by ${round(outRatio)} — expected ~${round(1 / plainRatio)}`,
+      );
+
+      await shot(page, 'ad-wheel-step');
+      return `plain ${round(plainRatio)}x, ctrl ${round(fineRatio)}x, out ${round(outRatio)}x per 240px`;
+    },
+  );
+
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;
 } catch (error) {
   console.error('\nFATAL:', error instanceof Error ? error.stack : error);

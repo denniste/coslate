@@ -30,6 +30,37 @@ export function clampScale(scale: number, limits: ScaleLimits = {}): number {
   return Math.min(max, Math.max(min, scale));
 }
 
+/**
+ * Mouse-wheel zoom, as a multiplicative factor for {@link zoomAt}.
+ *
+ * Browsers disagree about wheel units, so the first thing the factor does is
+ * normalize `WheelEvent.deltaMode` into pixels: line-based deltas (Firefox
+ * wheels) are multiplied to a pixel estimate, page-based deltas to a viewport
+ * estimate. On top of normalized pixels the zoom is exponential, which keeps
+ * trackpad gestures (many small deltas) proportional and makes a hardware
+ * notch — ~100 px on the dominant platforms — land at a predictable step:
+ * about **×1.20 plain** and **×1.06 fine** (`ctrl`/`meta`, which is also how
+ * a trackpad pinch reports itself).
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode: number, fine: boolean): number {
+  const pixels =
+    deltaMode === DOM_DELTA_LINE
+      ? deltaY * WHEEL_PIXELS_PER_LINE
+      : deltaMode === DOM_DELTA_PAGE
+        ? deltaY * WHEEL_PIXELS_PER_PAGE
+        : deltaY;
+  return Math.exp(-pixels * (fine ? WHEEL_ZOOM_RATE_FINE : WHEEL_ZOOM_RATE));
+}
+
+// WheelEvent.deltaMode values (declared locally so the pure core module needs
+// no DOM lib types): 0 = pixels, 1 = lines, 2 = pages.
+const DOM_DELTA_LINE = 1;
+const DOM_DELTA_PAGE = 2;
+const WHEEL_PIXELS_PER_LINE = 16;
+const WHEEL_PIXELS_PER_PAGE = 100;
+const WHEEL_ZOOM_RATE = 0.0018;
+const WHEEL_ZOOM_RATE_FINE = 0.0006;
+
 export function worldToScreen(viewport: Viewport, point: Point): Point {
   return {
     x: (point.x - viewport.x) * viewport.scale,

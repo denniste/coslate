@@ -9,6 +9,7 @@ import {
   panBy,
   screenToWorld,
   unionBounds,
+  wheelZoomFactor,
   worldToScreen,
   zoomAt,
   zoomTo,
@@ -84,6 +85,41 @@ describe('viewport: zoom', () => {
     expect(clampScale(-4)).toBe(MIN_SCALE);
     expect(clampScale(12345)).toBe(MAX_SCALE);
     expect(clampScale(2)).toBe(2);
+  });
+});
+
+describe('viewport: wheel zoom factor', () => {
+  // A hardware notch is ~100 px of deltaY; plain wheel should land near ×1.20
+  // there (was ×1.82 with the pre-0.2.2 constants), ctrl/meta near ×1.06.
+  it('targets ~x1.20 per 100 px plain notch', () => {
+    const factor = wheelZoomFactor(-100, 0, false);
+    expect(close(factor, 1.197, 0.01)).toBe(true);
+    // ...and the same travel out zooms symmetrically.
+    expect(close(wheelZoomFactor(100, 0, false), 1 / 1.197, 0.01)).toBe(true);
+  });
+
+  it('makes ctrl/meta (the fine step, and a trackpad pinch) finer than plain wheel', () => {
+    const plain = wheelZoomFactor(-100, 0, false);
+    const fine = wheelZoomFactor(-100, 0, true);
+    expect(close(fine, 1.062, 0.005)).toBe(true);
+    expect(fine).toBeLessThan(plain);
+  });
+
+  it('normalizes line-mode deltas (Firefox wheels) into pixels', () => {
+    // 3 lines at 16 px/line = 48 px of pixel-mode travel.
+    expect(close(wheelZoomFactor(-3, 1, false), wheelZoomFactor(-48, 0, false), 1e-12)).toBe(true);
+  });
+
+  it('normalizes page-mode deltas into pixels', () => {
+    expect(close(wheelZoomFactor(-1, 2, false), wheelZoomFactor(-100, 0, false), 1e-12)).toBe(true);
+  });
+
+  it('keeps trackpad-sized gestures proportional (exponential, not linear)', () => {
+    // Twenty small deltas of 5 px equal one 100 px notch, so a pinch never
+    // lurches regardless of how the hardware splits the travel.
+    let accumulated = 1;
+    for (let i = 0; i < 20; i++) accumulated *= wheelZoomFactor(-5, 0, true);
+    expect(close(accumulated, wheelZoomFactor(-100, 0, true), 1e-12)).toBe(true);
   });
 });
 

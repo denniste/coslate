@@ -4,6 +4,17 @@ All notable changes to CoSlate are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver while `0.x` —
 anything may still change, but breaking changes are called out explicitly.
 
+## 0.2.2 (unreleased)
+
+### Changed
+
+- **Mouse-wheel zoom is deliberately slower and per-browser consistent.** A plain wheel notch
+  (~100 px) now zooms ≈×1.20 (it was ≈×1.82, near-doubling per notch), and `ctrl`/`meta`+wheel —
+  the fine step, and the shape a trackpad pinch arrives in — lands ≈×1.06. `WheelEvent.deltaMode`
+  is normalized (lines→pixels, pages→pixels), so Firefox wheels no longer step differently from
+  Chrome's. The conversion is a pure, exported helper: `wheelZoomFactor(deltaY, deltaMode, fine)`
+  in `@coslate/core`. Proven by the `viewport: wheel zoom factor` unit suite and e2e `ad`.
+
 ## 0.2.1 — the toolbar's clear button was not an edit
 
 ### Fixed

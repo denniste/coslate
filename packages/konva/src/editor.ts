@@ -17,6 +17,7 @@ import {
   serialize,
   updateObjectDataOps,
   updateObjectOps,
+  wheelZoomFactor,
   zoomAt,
   zoomTo,
   type GridAppearance,
@@ -121,7 +122,6 @@ function textOption(value: string | (() => string) | undefined): () => string {
 }
 
 const PASTE_OFFSET = 16;
-const MIN_ZOOM_STEP = 0.0015;
 
 function cloneObject(object: SceneObject): SceneObject {
   return JSON.parse(JSON.stringify(object)) as SceneObject;
@@ -1032,7 +1032,10 @@ export class WhiteboardEditor implements ToolHost {
     event.preventDefault();
     const info = this.pointerInfo(event);
     const viewport = this.getViewport();
-    const intensity = event.ctrlKey || event.metaKey ? MIN_ZOOM_STEP : MIN_ZOOM_STEP * 4;
+    // ctrl/meta is the fine step — and on macOS it is also how a trackpad
+    // pinch reports itself, which arrives as many small deltas and stays
+    // proportional because the factor is exponential (see wheelZoomFactor).
+    const fine = event.ctrlKey || event.metaKey;
 
     // A two-finger trackpad gesture reports horizontal travel; treat it as a pan
     // so the same hardware gesture that scrolls a page pans the board.
@@ -1040,7 +1043,7 @@ export class WhiteboardEditor implements ToolHost {
       this.applyViewport(panBy(viewport, -event.deltaX, -event.deltaY));
       return;
     }
-    this.applyViewport(zoomAt(viewport, info.screen, Math.exp(-event.deltaY * intensity)));
+    this.applyViewport(zoomAt(viewport, info.screen, wheelZoomFactor(event.deltaY, event.deltaMode, fine)));
   };
 
   private readonly handleContextMenu = (event: Event): void => {

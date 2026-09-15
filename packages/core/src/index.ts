@@ -92,6 +92,7 @@ export {
   screenToWorld,
   unionBounds,
   worldToScreen,
+  wheelZoomFactor,
   zoomAt,
   zoomTo,
 } from './viewport.js';
