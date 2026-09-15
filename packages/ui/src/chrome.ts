@@ -1,9 +1,9 @@
-import { STROKE_PALETTE, STROKE_STYLES, STROKE_WIDTHS, TOOL_NAMES, type ToolName } from '@coslate/konva';
+import { BOARD_THEMES, STROKE_PALETTE, STROKE_STYLES, STROKE_WIDTHS, TOOL_NAMES, type BoardThemeName, type ToolName } from '@coslate/konva';
 import { icon, type IconName } from './icons.js';
 import { ensureChromeStyles } from './styles.js';
 import { applyTheme, clearTheme } from './theme.js';
 import { createTooltipLayer } from './tooltip.js';
-import type { Chrome, ChromeMessageKey, ChromeOptions, ChromeParams } from './types.js';
+import type { Chrome, ChromeMessageKey, ChromeOptions, ChromeParams, ChromeTheme } from './types.js';
 
 /**
  * The embeddable chrome: an icon toolbar with hover hints, and a status bar.
@@ -82,7 +82,7 @@ interface IconButtonOptions {
 }
 
 export function createChrome<K extends string>(options: ChromeOptions<K>): Chrome<K> {
-  const { toolbar, statusbar, editor, i18n, theme, statusHint } = options;
+  const { toolbar, statusbar, editor, i18n, theme, statusHint, onBoardThemeChange } = options;
 
   // The stylesheet ships with the package and is injected once per document.
   ensureChromeStyles(toolbar.ownerDocument);
@@ -92,6 +92,37 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
   toolbar.classList.add('coslate-ui', 'coslate-toolbar');
   statusbar.classList.add('coslate-ui', 'coslate-statusbar');
   applyTheme([toolbar, statusbar], theme);
+
+  // The board surface (white board / black board) is one switch with several
+  // faces: the page background and grid (editor view config), the chrome's own
+  // tokens, and the glyph frames whose greys are literal in the icon markup.
+  // The attribute is the source of truth the stylesheet keys on; the public
+  // colour tokens ride the inline `theme` mechanism, because a host may pin
+  // its palette inline through the `theme` option and a stylesheet rule can
+  // never beat an inline custom property. The black board needs no token
+  // object of its own: the host's `theme` option IS the black-board baseline.
+  const WHITE_BOARD_TOKENS: Partial<ChromeTheme> = {
+    bg: '#f7f8fa',
+    panel: '#eceff3',
+    panelAlt: '#e2e7ec',
+    border: '#cdd4dc',
+    text: '#1d2733',
+    muted: '#5c6875',
+    accent: '#1c7ed6',
+    accentSoft: 'rgba(28, 126, 214, 0.14)',
+  };
+
+  let boardTheme: BoardThemeName = options.boardTheme ?? 'black';
+  const boardRoots = (): HTMLElement[] => [toolbar, statusbar, tooltip.node];
+  function paintBoard(previous: BoardThemeName): void {
+    const preset = BOARD_THEMES[boardTheme];
+    editor.setBackground(preset.background);
+    editor.setGrid(preset.grid);
+    const roots = boardRoots();
+    clearTheme(roots, previous === 'white' ? WHITE_BOARD_TOKENS : (theme ?? {}));
+    applyTheme(roots, boardTheme === 'white' ? WHITE_BOARD_TOKENS : (theme ?? {}));
+    for (const root of roots) root.dataset.board = boardTheme;
+  }
 
   /**
    * The chrome's own keys, resolved through the host translator.
@@ -104,12 +135,14 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
   const t = (key: ChromeMessageKey, params?: ChromeParams): string => i18n.t(key as K, params);
   const tooltip = createTooltipLayer(toolbar.ownerDocument.body);
   applyTheme([tooltip.node], theme);
+  paintBoard('black');
 
   const toolButtons = new Map<ToolName, HTMLButtonElement>();
   const strokeButtons = new Map<string, HTMLButtonElement>();
   const fillButtons = new Map<string, HTMLButtonElement>();
   const widthButtons = new Map<number, HTMLButtonElement>();
   const lineStyleButtons = new Map<string, HTMLButtonElement>();
+  const boardButtons = new Map<BoardThemeName, HTMLButtonElement>();
 
   function iconButton(button: IconButtonOptions): HTMLButtonElement {
     const node = el('button', { type: 'button', class: 'icon-button', 'data-testid': button.testId });
@@ -190,6 +223,40 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     onClick: () => editor.zoomToFit(),
   });
   const zoom = group('group.zoom', zoomOut, zoomLabel, zoomIn, zoomFit);
+
+  // --- board surface (white board / black board) -------------------------------------------
+  // Two radio-style buttons, like the tools: the glyph shows the board each
+  // button paints, and exactly one stays pressed. The flip is view
+  // configuration — the document, the undo stack and read-only state are all
+  // untouched — but it is the deepest chrome gesture, retheming the page, the
+  // grid, every token and the glyph frames in one attribute change.
+  const BOARD_META: Record<BoardThemeName, { key: ChromeMessageKey; icon: IconName }> = {
+    white: { key: 'board.white', icon: 'boardWhite' },
+    black: { key: 'board.black', icon: 'boardBlack' },
+  };
+  const boardRow: (Node | string)[] = [];
+  for (const name of Object.keys(BOARD_META) as BoardThemeName[]) {
+    const meta = BOARD_META[name];
+    const node = iconButton({
+      testId: `board-${name}`,
+      icon: meta.icon,
+      label: () => t(meta.key),
+      toggle: true,
+      onClick: () => setBoardTheme(name),
+    });
+    boardButtons.set(name, node);
+    boardRow.push(node);
+  }
+  const board = group('group.board', ...boardRow);
+
+  function setBoardTheme(next: BoardThemeName): void {
+    if (next === boardTheme) return;
+    const previous = boardTheme;
+    boardTheme = next;
+    paintBoard(previous);
+    onBoardThemeChange?.(next);
+    render();
+  }
 
   // --- object actions ------------------------------------------------------
   const objectActions = group(
@@ -442,7 +509,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
   // The toolbar fills its container; the inner wrapper carries the padding so
   // the container-query width is the true available width (see styles.ts).
   const main = el('div', { class: 'toolbar-main' });
-  main.append(tools, history, zoom, objectActions, io, ...(language ? [language] : []));
+  main.append(tools, history, zoom, board, objectActions, io, ...(language ? [language] : []));
   const toolbarInner = el('div', { class: 'coslate-toolbar-inner' }, [main, style]);
   toolbar.append(toolbarInner);
 
@@ -497,6 +564,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     setPressed(fillButtons, String(editor.style.fill));
     setPressed(widthButtons, editor.style.strokeWidth);
     setPressed(lineStyleButtons, editor.style.strokeStyle);
+    setPressed(boardButtons, boardTheme);
 
     // The custom pickers carry the pressed state for any value the fixed
     // options do not cover; the input opens at the current colour so picking
@@ -598,10 +666,11 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     statusbarInner.remove();
     toolbar.classList.remove('coslate-ui', 'coslate-toolbar');
     statusbar.classList.remove('coslate-ui', 'coslate-statusbar');
+    for (const root of [toolbar, statusbar]) delete root.dataset.board;
     toolbar.hidden = false;
     statusbar.hidden = false;
     chromeVisible = true;
-    clearTheme([toolbar, statusbar, tooltip.node], theme);
+    clearTheme([toolbar, statusbar, tooltip.node], boardTheme === 'white' ? WHITE_BOARD_TOKENS : theme);
   }
 
   render();
@@ -611,6 +680,8 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     setStatus: applyStatus,
     setChromeVisible,
     isChromeVisible: () => chromeVisible,
+    getBoardTheme: () => boardTheme,
+    setBoardTheme,
     destroy,
   };
 }

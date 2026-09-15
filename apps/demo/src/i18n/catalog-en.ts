@@ -26,6 +26,9 @@ export const en = {
   'group.file': 'File',
   'group.style': 'Style',
   'group.language': 'Language',
+  'group.board': 'Board surface',
+  'board.white': 'Whiteboard',
+  'board.black': 'Blackboard',
 
   // Tools. The keyboard hint beside each label is a key, not a word, so it is
   // not translated (a remapped host would change it, not translate it).

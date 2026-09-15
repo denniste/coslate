@@ -25,6 +25,9 @@ export const zhHant: DemoCatalog = {
   'group.file': '檔案',
   'group.style': '樣式',
   'group.language': '語言',
+  'group.board': '板面',
+  'board.white': '白板',
+  'board.black': '黑板',
 
   'tool.select.label': '選取',
   'tool.pen.label': '畫筆',

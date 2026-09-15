@@ -21,6 +21,9 @@ const STORAGE_KEY = 'coslate:scene:v1';
 // The camera is per-user view state and deliberately not part of the document
 // (a saved scene has no `viewport` field), so it is persisted under its own key.
 const CAMERA_KEY = 'coslate:camera:v1';
+// The board surface (白板 / 黑板) is view configuration like the camera: the
+// chrome owns the switch, the demo only remembers the choice across reloads.
+const BOARD_THEME_KEY = 'coslate:board-theme:v1';
 const AUTOSAVE_DELAY_MS = 250;
 
 /**
@@ -70,12 +73,35 @@ const editor = new WhiteboardEditor({
   textAriaLabel: () => i18n.t('text.ariaLabel'),
 });
 
+function restoreBoardTheme(): 'white' | 'black' {
+  try {
+    const saved = localStorage.getItem(BOARD_THEME_KEY);
+    if (saved === 'white' || saved === 'black') return saved;
+  } catch {
+    // Storage can be unavailable (private mode); the default board is fine.
+  }
+  return 'black';
+}
+
+let boardTheme = restoreBoardTheme();
+
+function saveBoardTheme(theme: 'white' | 'black'): void {
+  boardTheme = theme;
+  try {
+    localStorage.setItem(BOARD_THEME_KEY, theme);
+  } catch {
+    // As with the camera: not worth failing over.
+  }
+}
+
 let chrome = createChrome({
   toolbar,
   statusbar,
   editor,
   i18n,
   theme: THEME,
+  boardTheme,
+  onBoardThemeChange: saveBoardTheme,
   statusHint: DEBUG_HINT,
 });
 
@@ -236,6 +262,9 @@ window.__chrome = {
       editor,
       i18n: { ...i18n, languages },
       theme: THEME,
+      // A remount must keep the user's board: the choice is demo state, not chrome state.
+      boardTheme,
+      onBoardThemeChange: saveBoardTheme,
       statusHint: DEBUG_HINT,
     });
     chrome.setStatus('status.newScene');

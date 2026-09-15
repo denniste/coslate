@@ -85,6 +85,42 @@ const STYLESHEET = `
   box-sizing: border-box;
 }
 
+/* ----------------------------------------------------------- board themes --
+   The white-board theme's colour work is split across two mechanisms. The
+   public tokens (ChromeTheme's twelve) ride the same INLINE custom-property
+   layer as the host's \`theme\` option — chrome.ts applies WHITE_BOARD_TOKENS
+   through applyTheme, because a stylesheet rule can never beat an inline
+   property and hosts may pin their palette that way. What remains here is
+   everything the inline layer cannot carry: the derived surfaces (which the
+   theme option has no fields for), the color-scheme, and the glyph-frame
+   greys below. Radius, z-index, danger and the swatch checkerboard read the
+   same on both boards. */
+
+.coslate-ui[data-board='white'] {
+  --coslate-toolbar-from: #fbfcfd;
+  --coslate-toolbar-to: #eef1f5;
+  --coslate-hover: #dce2e9;
+  --coslate-hover-text: #101820;
+  --coslate-accent-ring: rgba(28, 126, 214, 0.4);
+  --coslate-accent-soft-strong: rgba(28, 126, 214, 0.22);
+  --coslate-swatch-ring: rgba(20, 28, 38, 0.3);
+  --coslate-tooltip-bg: #ffffff;
+  --coslate-tooltip-border: #c9d1da;
+  --coslate-tooltip-shadow: 0 10px 24px rgba(20, 28, 38, 0.25);
+  --coslate-kbd-bg: #e6eaef;
+
+  color-scheme: light;
+}
+
+/* The custom-picker glyph frames are literal greys chosen against the dark
+   panels (they are presentation attributes in the icon markup); the white
+   board needs a darker grey to keep the same contrast. The fill picker's
+   centre is always painted inline by the chrome, so it needs no theme rule. */
+.coslate-ui[data-board='white'] .stroke-frame,
+.coslate-ui[data-board='white'] .fill-frame {
+  fill: #7a8494;
+}
+
 /* The mini state: both mount points collapse, so the host's layout gives the
    canvas everything back. The attribute selector outranks the display rules. */
 .coslate-ui.coslate-toolbar[hidden],

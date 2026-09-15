@@ -18,6 +18,9 @@ export const zhCN: DemoCatalog = {
   'group.file': '文件',
   'group.style': '样式',
   'group.language': '语言',
+  'group.board': '板面',
+  'board.white': '白板',
+  'board.black': '黑板',
 
   'tool.select.label': '选择',
   'tool.pen.label': '画笔',

@@ -838,6 +838,7 @@ try {
       const iconOnly = [
         'tool-select', 'tool-pen', 'tool-eraser', 'tool-rect', 'tool-ellipse', 'tool-line', 'tool-arrow', 'tool-text',
         'undo', 'redo', 'zoom-out', 'zoom-in', 'zoom-fit',
+        'board-white', 'board-black',
         'delete', 'duplicate', 'front', 'back',
         'export-png', 'save-json', 'load-json', 'clear',
       ];
@@ -905,12 +906,12 @@ try {
       });
       for (const issue of audit.issues) problems.push(`${width}px ${issue}`);
       if (audit.canvasHeight < 300) problems.push(`${width}px toolbar left only ${audit.canvasHeight}px of canvas`);
-      if (audit.groups !== 7) problems.push(`${width}px lost a toolbar group (${audit.groups}/7)`);
+      if (audit.groups !== 8) problems.push(`${width}px lost a toolbar group (${audit.groups}/8)`);
       heights.push(`${width}:${audit.canvasHeight}`);
     }
     await page.setViewportSize({ width: 1280, height: 820 });
     assert.deepEqual(problems, [], `narrow-layout problems: ${problems.join(' | ')}`);
-    return `7 widths, 320-1024px, all 21 controls reachable; canvas height ${heights.join(' ')}`;
+    return `7 widths, 320-1024px, all 22 controls reachable; canvas height ${heights.join(' ')}`;
   });
 
   // ------------------------------------------------------------------ s. i18n
@@ -2162,6 +2163,97 @@ try {
 
       await shot(page, 'ag-line-styles');
       return 'dashed + dash-dot restyle the selection, each reverts in one undo, the preset passes to new ink';
+    },
+  );
+
+  // -------------------------------------------------------- ah. board themes
+  await check(
+    'ah',
+    'the white/black board switch repaints page, grid, chrome, icons and export together — and never the document',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+      await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+
+      const doc = () => page.evaluate(() => window.__scene.getScene());
+      const viewConfig = () => page.evaluate(() => window.__scene.getViewConfig());
+      const pressedBoards = () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('#toolbar [data-testid^="board-"]')]
+            .filter((node) => node.getAttribute('aria-pressed') === 'true')
+            .map((node) => node.getAttribute('data-testid')),
+        );
+      const tokenOf = (name) =>
+        page
+          .evaluate((n) => getComputedStyle(document.querySelector('#toolbar')).getPropertyValue(n).trim(), `--coslate-${name}`);
+      const frameFill = () =>
+        page.evaluate(() => {
+          const frame = document.querySelector('[data-testid="stroke-custom"] .stroke-frame');
+          return frame ? getComputedStyle(frame).fill : null;
+        });
+      const themeAttrs = () =>
+        page.evaluate(() => ({
+          toolbar: document.querySelector('#toolbar')?.getAttribute('data-board'),
+          statusbar: document.querySelector('#statusbar')?.getAttribute('data-board'),
+          tooltip: document.querySelector('.tooltip.coslate-ui')?.getAttribute('data-board'),
+        }));
+
+      // The board opens black by default: the documented defaults, dark tokens,
+      // the grey glyph frames — and exactly the black button pressed.
+      assert.deepEqual(await themeAttrs(), { toolbar: 'black', statusbar: 'black', tooltip: 'black' });
+      assert.deepEqual(await pressedBoards(), ['board-black'], 'exactly the black board button starts pressed');
+      assert.equal(await tokenOf('text'), '#e8eaed', 'dark chrome text token on the black board');
+      assert.equal(await frameFill(), 'rgb(149, 154, 164)', 'the picker frame wears its dark-theme grey');
+      const darkPage = await samplePageLayerUntil(page, (s) => s.modal === '20,22,26');
+      assert.ok(darkPage, 'the black board paints #14161a');
+
+      // The flip is one real click, and it must be view configuration only.
+      const documentBefore = await page.evaluate(() => window.__scene.toJSON());
+      await page.click('[data-testid="board-white"]');
+
+      assert.deepEqual(await themeAttrs(), { toolbar: 'white', statusbar: 'white', tooltip: 'white' });
+      assert.deepEqual(await pressedBoards(), ['board-white'], 'exactly the white board button is pressed');
+      const whiteView = await viewConfig();
+      assert.equal(whiteView.background, '#ffffff', 'the white board paints a white page');
+      assert.equal(whiteView.grid.color, 'rgba(17, 24, 34, 0.10)', 'grid lines flip to faint dark on white');
+      assert.equal(whiteView.grid.majorColor, 'rgba(17, 24, 34, 0.16)', 'major grid lines flip too');
+      assert.equal(await tokenOf('text'), '#1d2733', 'light chrome text token on the white board');
+      assert.equal(await tokenOf('accent'), '#1c7ed6', 'the accent darkens for white (contrast)');
+      assert.equal(await frameFill(), 'rgb(122, 132, 148)', 'the picker frame darkens on the light chrome');
+
+      // Real pixels: a white modal with the dark grid drawing over it.
+      const whitePage = await samplePageLayerUntil(
+        page,
+        (s) => s.modal === '255,255,255' && Object.keys(s.counts).length > 1,
+      );
+      assert.ok(whitePage, `the white board must be a white page with its grid on top, saw ${whitePage?.modal}`);
+
+      // The export follows the same page layer.
+      const png = await exportPixels(page);
+      assert.equal(png.modal, '255,255,255', 'the exported PNG carries the white board');
+
+      // And the document is untouched: appearance is view state, nothing more.
+      assert.equal(await page.evaluate(() => window.__scene.toJSON()), documentBefore, 'the flip never touched the document');
+
+      await shot(page, 'ah-white-board');
+
+      // The choice is remembered: a reload reopens on the white board.
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+      assert.deepEqual(await themeAttrs().then((a) => a.toolbar), 'white', 'the reload restored the white board');
+      assert.equal((await viewConfig()).background, '#ffffff', 'the reloaded page is white');
+
+      // Flip back: everything returns to the documented default look.
+      await page.click('[data-testid="board-black"]');
+      assert.deepEqual(await pressedBoards(), ['board-black'], 'the black button is pressed again');
+      const blackView = await viewConfig();
+      assert.equal(blackView.background, '#14161a', 'back to the default dark page');
+      assert.equal(blackView.grid.color, 'rgba(255, 255, 255, 0.05)', 'back to the default faint white grid');
+      assert.equal(await tokenOf('text'), '#e8eaed', 'dark tokens back');
+      assert.equal(await frameFill(), 'rgb(149, 154, 164)', 'the picker frame grey restored');
+      await samplePageLayerUntil(page, (s) => s.modal === '20,22,26');
+
+      return 'one click flips page+grid+chrome+icons+export, survives reload, document byte-identical';
     },
   );
 

@@ -23,6 +23,9 @@ export const ar: DemoCatalog = {
   'group.file': 'الملف',
   'group.style': 'النمط',
   'group.language': 'اللغة',
+  'group.board': 'سطح اللوح',
+  'board.white': 'سبورة بيضاء',
+  'board.black': 'سبورة سوداء',
 
   'tool.select.label': 'تحديد',
   'tool.pen.label': 'قلم',

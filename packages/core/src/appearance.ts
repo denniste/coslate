@@ -41,6 +41,37 @@ export const DEFAULT_GRID: Readonly<GridAppearance> = {
   spacing: 20,
 };
 
+/**
+ * The named board surfaces a chrome can offer as one switch: the white board and
+ * the black board. Each preset pairs the page background with grid colours that
+ * stay legible on it — view configuration exactly like {@link DEFAULT_GRID},
+ * never document state.
+ */
+export type BoardThemeName = 'white' | 'black';
+
+export interface BoardThemePreset {
+  /** Page background for this board. */
+  background: string;
+  /** Grid colours for this board; merged over the current grid, so a preset
+   *  never silently re-enables a grid the user hid. */
+  grid: { color: string; majorColor: string };
+}
+
+export const BOARD_THEMES: Readonly<Record<BoardThemeName, BoardThemePreset>> = {
+  // The blackboard is the runtime's historical look: the documented defaults,
+  // so flipping to it from any state restores exactly the published contract.
+  black: {
+    background: DEFAULT_BACKGROUND,
+    grid: { color: DEFAULT_GRID.color, majorColor: DEFAULT_GRID.majorColor },
+  },
+  // The whiteboard: a white page with faint dark grid lines (the inverse of the
+  // dark default), chosen so strokes in the default palette stay legible.
+  white: {
+    background: '#ffffff',
+    grid: { color: 'rgba(17, 24, 34, 0.10)', majorColor: 'rgba(17, 24, 34, 0.16)' },
+  },
+};
+
 const isColor = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
 /**

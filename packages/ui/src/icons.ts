@@ -59,6 +59,15 @@ const ICONS = {
   globe:
     '<circle cx="12" cy="12" r="8.2"/><path d="M3.8 12h16.4"/><path d="M12 3.8c2.2 2.4 3.3 5.2 3.3 8.2s-1.1 5.8-3.3 8.2c-2.2-2.4-3.3-5.2-3.3-8.2S9.8 6.2 12 3.8Z"/>',
 
+  // Board surface (white board / black board): a little board drawn in theme-proof colours.
+  // The white board is a white sheet outlined in currentColor (readable on
+  // both chrome themes); the black board is a currentColor slab — the text
+  // colour itself, so it reads dark on the light chrome and light on the dark.
+  boardWhite:
+    '<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 16V7A1.5 1.5 0 0 1 5 5.5z" fill="#ffffff"/><path d="M8 19.5h8"/>',
+  boardBlack:
+    '<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 16V7A1.5 1.5 0 0 1 5 5.5z" fill="currentColor" stroke="none"/><path d="M8 19.5h8"/>',
+
   // Line-style samples for the style strip: one glyph per pattern, drawn as a
   // horizontal rule at stroke width so the button previews the dash it sets.
   lineSolid: '<path d="M4 12h16"/>',

@@ -8,6 +8,22 @@ anything may still change, but breaking changes are called out explicitly.
 
 ### Added
 
+- **Whiteboard / blackboard switch (白板 / 黑板).** A new board-surface group in
+  the toolbar flips the whole page between the classic dark board and a white
+  board in one click: the page background and grid colours (through the
+  editor's view-config API, so the PNG export follows and the document is
+  byte-identical), the chrome's full token set (light derived surfaces via the
+  stylesheet, public tokens via the same inline layer as the `theme` option),
+  the color-scheme, and the custom-picker glyph frames. `BOARD_THEMES` in
+  `@coslate/core` owns the preset pairing — the black preset is exactly the
+  documented defaults, so flipping back restores the published contract, and
+  grid colours merge over the current grid without re-enabling a hidden one.
+  The chrome exposes `boardTheme` / `onBoardThemeChange` options and
+  `getBoardTheme()` / `setBoardTheme()`, and the demo persists the choice
+  across reloads. +3 chrome copy keys (`group.board`, `board.white`,
+  `board.black`, 51→54, all four demo catalogs). Proven by the `BOARD_THEMES`
+  unit suite and e2e `ah`.
+
 - **Line styles: solid, dashed, and dash-dot patterns.** The style strip gains a
   line-style group whose three glyphs preview the pattern they set. Every stroked
   object (rect, ellipse, line, arrow, freehand ink) carries a new

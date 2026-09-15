@@ -6,8 +6,8 @@
  * somebody else's editor.
  */
 
-export type { GridAppearance } from './appearance.js';
-export { DEFAULT_BACKGROUND, DEFAULT_GRID, resolveGrid } from './appearance.js';
+export type { BoardThemeName, BoardThemePreset, GridAppearance } from './appearance.js';
+export { BOARD_THEMES, DEFAULT_BACKGROUND, DEFAULT_GRID, resolveGrid } from './appearance.js';
 
 export type {
   Bounds,

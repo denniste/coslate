@@ -55,7 +55,7 @@ export { TextTool } from './tools/text.js';
 export {
   createStore,
   createEmptyScene,
-  DEFAULT_BACKGROUND,
+  BOARD_THEMES, DEFAULT_BACKGROUND,
   DEFAULT_GRID,
   deserialize,
   resolveGrid,
@@ -63,4 +63,4 @@ export {
   screenToWorld,
   worldToScreen,
 } from '@coslate/core';
-export type { GridAppearance, Scene, SceneObject, SceneStore, Viewport } from '@coslate/core';
+export type { BoardThemeName, BoardThemePreset, GridAppearance, Scene, SceneObject, SceneStore, Viewport } from '@coslate/core';

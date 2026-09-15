@@ -1,4 +1,4 @@
-import type { WhiteboardEditor } from '@coslate/konva';
+import type { BoardThemeName, WhiteboardEditor } from '@coslate/konva';
 
 /**
  * Public types for `@coslate/ui`.
@@ -30,6 +30,10 @@ export type ChromeMessageKey =
   | 'group.file'
   | 'group.style'
   | 'group.language'
+  // Board surface (white board / black board).
+  | 'group.board'
+  | 'board.white'
+  | 'board.black'
   // Tools. The shortcut badge beside each is a key name, never translated.
   | 'tool.select.label'
   | 'tool.pen.label'
@@ -131,6 +135,16 @@ export interface ChromeOptions<K extends string = string> {
   i18n: ChromeI18n<K>;
   /** CSS custom properties, applied per instance. */
   theme?: Partial<ChromeTheme>;
+  /**
+   * The board surface the chrome opens on: `'white'` (the white board) or
+   * `'black'` (the black board). The default `'black'` is the runtime's
+   * historical dark look, so existing embeds see no change. The chrome paints
+   * the matching page background and grid through the editor's view-config API
+   * and themes itself to match.
+   */
+  boardTheme?: BoardThemeName;
+  /** Called after every board-theme flip, so a host can persist the choice. */
+  onBoardThemeChange?: (theme: BoardThemeName) => void;
   /** `'none'` is the mini state: the canvas fills the layout and no chrome shows. */
   chrome?: 'full' | 'none';
   /**
@@ -149,6 +163,10 @@ export interface Chrome<K extends string = string> {
   /** Toggle the whole chrome; `false` leaves the canvas alone in the layout. */
   setChromeVisible(visible: boolean): void;
   isChromeVisible(): boolean;
+  /** The board surface currently shown — the chrome's own toggle state. */
+  getBoardTheme(): BoardThemeName;
+  /** Flip the board surface (white board / black board): page, grid and chrome retheme together. */
+  setBoardTheme(theme: BoardThemeName): void;
   /** Unbind every listener and remove everything the chrome added. */
   destroy(): void;
 }
