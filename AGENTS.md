@@ -2,8 +2,10 @@
 
 Instructions for anyone — human or AI agent — changing CoSlate.
 
-**First, read `docs/INVARIANTS.md`.** It is the contract: the guarantees hosts depend on and the
-rules that keep this project worth using. `docs/scope-and-origin.md` explains why it exists;
+**First, read `docs/INVARIANTS.md` and `docs/requirements.md`.** The first is the contract: the
+guarantees hosts depend on and the
+rules that keep it worth using. The second states what the runtime must provide for its first
+host, with the acceptance standard a reviewer applies. `docs/scope-and-origin.md` explains why it exists;
 `ARCHITECTURE.md` explains how it is put together.
 
 ## The non-negotiables, in one screen

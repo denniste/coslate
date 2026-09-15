@@ -228,7 +228,9 @@ In short: zero dependencies and no DOM in the core, no third-party engine ever, 
 in the document, remote application is idempotent and atomic, read-only is structural rather than a
 flag check, and the packages ship no user-visible copy.
 
-The machine-checkable rules are enforced in `tests/unit/invariants.test.ts`.
+`docs/requirements.md` states what the runtime must provide for its first host, together
+with the acceptance standard a reviewer applies. The machine-checkable rules are enforced in
+`tests/unit/invariants.test.ts`.
 
 ## Non-goals for v1
 
