@@ -54,7 +54,8 @@ const chrome = createChrome({ toolbar, statusbar, editor, i18n });
 The chrome ships **no user-visible copy**: every label, tooltip and status message comes from your
 catalog, typed so a missing translation is a compile error. Theme it with `--coslate-*` custom
 properties; hide it entirely with `chrome: 'none'` (a "mini" state) or `chrome.setChromeVisible(false)`.
-The style row offers a stroke palette, fill options and stroke widths.
+The style row offers a stroke palette, fill options, stroke widths, and a custom colour picker per
+channel (deliberately `change`-event only: one pick is exactly one undo step).
 
 ## The read-only viewer
 
@@ -102,6 +103,22 @@ const result = readBaseline(cached);          // a cached baseline NEVER throws:
 
 `readBaseline` is the tolerant reader for server-stored blobs that may have been written by a
 different engine or a newer build; `loadJSON` is the strict one, for files the user chose.
+
+## Applying a whole document (baselines and snapshots)
+
+For whole-document restore — a reconnect snapshot, a polled server baseline — converge through the
+delta path instead of `loadJSON`, so the local undo stack survives and an already-matching board is
+a free no-op:
+
+```ts
+const baseline = editor.getBaseline();  // compact serialized document — the shape a server stores
+editor.loadBaseline(cached);            // never throws: applies {status:'ok'}, or reports
+                                        // {status:'empty', reason} and leaves the board untouched
+viewer.loadBaseline(cached);            // the same convergence on a read-only projection
+```
+
+Underneath, `loadBaseline` diffs the stored document against the live one (`diffScenes` in
+`@coslate/core`) and applies the result through the same idempotent, atomic path as a peer delta.
 
 ## The page: background and grid
 

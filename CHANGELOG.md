@@ -15,6 +15,20 @@ anything may still change, but breaking changes are called out explicitly.
   only: one pick is one undo step, so there is no live preview while dragging
   in the native picker. New chrome keys `style.strokeCustom` / `style.fillCustom`
   (demo catalogs ship all four locales). Proven by e2e `ae`.
+- **Baseline application: a whole document travels the delta path.** New `diffScenes(from, to)` in
+  `@coslate/core` computes the wire's own `{ added, updated, removed, order }` delta between two
+  scenes, so a stored baseline or snapshot converges through the exact same path as a peer update —
+  idempotent, atomic, never an undo step, and a free no-op (no history entry, no repaint) when the
+  document is already converged. `WhiteboardEditor` gains `getBaseline()` (the compact serialized
+  document, the shape a server stores), `applyBaseline(scene)`, `loadBaseline(json)` — wrapping the
+  never-throwing `readBaseline`, so an unreadable or newer baseline reports
+  `{ status: 'empty', reason }` and leaves the board untouched — and `downloadBaseline()`;
+  `EditorOptions.scene` seeds the initial document. The read-only viewer gains
+  `loadBaseline`/`applyBaseline`, and the chrome ships save-baseline / load-baseline buttons with
+  four new copy keys (`file.saveBaseline`, `file.loadBaseline`, `status.baselineLoaded`,
+  `status.baselineEmpty` — 44→48; demo catalogs ship all four locales). The local undo stack
+  survives a baseline application; the redo branch forks clear exactly like any other remote
+  change. Proven by the `records: diffScenes` and `store: baseline apply` unit suites and e2e `af`.
 
 ### Changed
 
