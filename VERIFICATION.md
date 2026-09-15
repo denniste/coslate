@@ -6,12 +6,13 @@
 > plain history, not as a resolvable reference.
 
 > **This file is a log, newest first.** The current state of the project is the
-> [0.2.2 run (wheel zoom, custom pickers, R13 baselines)](#1-022--wheel-zoom-custom-pickers-and-r13-baseline-application-2026-09-15-current) right below:
-> **164 unit tests, 32/32 end-to-end assertions, both demo pages building, all three packages
-> published to npm at 0.2.2 with SLSA provenance**. Everything after it is kept as history —
-> §2 is the 0.2.1 run (bug-log O1/O2/O3, 148/29), §3 the 0.2.0 run (P1 + R11, 144/26), §4 the
-> v0.2 host-readiness run (137 tests, 24/24... recorded as 128 at the time), §5 the i18n-era run
-> (20/20) and §6 the original v0.1 record (16/16). Where any of them disagree with the newest,
+> [0.2.3 run (line styles, board themes, picker icons)](#1-023--line-styles-board-themes-and-picker-icons-2026-09-16-current) right below:
+> **178 unit tests, 34/34 end-to-end assertions, both demo pages building, all three packages
+> published to npm at 0.2.3 with SLSA provenance**. Everything after it is kept as history —
+> §2 is the 0.2.2 run (wheel zoom, custom pickers, R13 baselines, 164/32), §3 the 0.2.1 run
+> (bug-log O1/O2/O3, 148/29), §4 the 0.2.0 run (P1 + R11, 144/26), §5 the
+> v0.2 host-readiness run (137 tests, 24/24... recorded as 128 at the time), §6 the i18n-era run
+> (20/20) and §7 the original v0.1 record (16/16). Where any of them disagree with the newest,
 > the newest wins.
 
 Everything below was executed in this directory on the staging machine. Raw output for the
@@ -23,7 +24,52 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ---
 
-## 1. 0.2.2 — wheel zoom, custom pickers, and R13 baseline application (2026-09-15, current)
+## 1. 0.2.3 — line styles, board themes, and picker icons (2026-09-16, current)
+
+Scope: line styles (solid / dashed / dash-dot) across model, renderer and toolbar; the
+whiteboard / blackboard switch (page background + grid through the view-config rule, chrome
+tokens through the inline theme layer plus a `[data-board]` stylesheet block, glyph frames,
+`boardTheme` chrome option); and the picker-icon polish (transparency checkerboard, neutral
+fill samples, framed custom-pickers). +6 chrome copy keys (48→54). All manifests at `0.2.3`,
+peers `^0.2.3` (the fifth manifest, `apps/demo`, is private and unpublishable but keeps the
+same number). Additive only: `SCENE_VERSION` stays 2, a missing `strokeStyle` means solid, no
+migration.
+
+| Step | Result |
+| --- | --- |
+| `pnpm typecheck` | PASS — 5 TypeScript projects (core, konva, ui, demo, tests), zero errors |
+| `pnpm test` | PASS — **178/178 in 11 files** (new `stroke style model` / `dashPattern` suite and `BOARD_THEMES` suite) |
+| `pnpm e2e` | PASS — **34/34 assertions** (a–z, aa–af, plus new `ag` line styles and `ah` board themes), `pageErrors = []` |
+| `pnpm pack` self-check (core / konva / ui) | PASS — dist-only tarballs, no tsbuildinfo / `workspace:*` leakage, peers `^0.2.3` |
+| publish workflow (release `published`) | SUCCESS — second run of the trusted-publisher/OIDC path, 32 s, green on the first attempt |
+| `npm view` + headless consumer smoke | PASS — all three at 0.2.3 with SLSA provenance attestations; a clean consumer installs from the registry and proves `BOARD_THEMES` presets, width-scaled `dashPattern`, `strokeStyle` surviving the real `diffScenes` → `applyDelta` wire path, serialize round-trip convergence at `SCENE_VERSION` 2, and the new chrome surface (`boardTheme` option, `board.white`/`board.black` keys, `setBoardTheme`, `style.line*` keys) in the published types |
+
+Evidence, per the acceptance standard:
+
+- **Line styles.** `strokeStyle` is optional on every stroked object's data (rect, ellipse,
+  line, arrow, freehand ink — never text); `dashPattern(style, width)` scales segments with
+  stroke width and `strokeScaleEnabled(false)` keeps the pattern screen-constant under zoom.
+  e2e **`ag`** proves the toolbar preset applies, undo reverts to solid, redo reapplies, a
+  second object inherits the active pattern, and the three glyphs preview their own pattern.
+- **Board themes.** `BOARD_THEMES` in `core/src/appearance.ts` pairs surface with page
+  background and grid colours; the black preset is exactly the documented defaults, so
+  flipping back restores the contract, and grid colours merge without re-enabling a hidden
+  grid. The flip rides the view-config rule (I4): e2e **`ah`** asserts the white page's
+  pixels, the PNG export, and the byte-identical document — the undo stack untouched. The
+  chrome flips in two layers: public `ChromeTheme` tokens through the same inline
+  `applyTheme`/`clearTheme` mechanism as the host's `theme` option (a stylesheet rule can
+  never beat an inline property), derived surfaces + color-scheme + glyph-frame greys in the
+  `[data-board='white']` block. `boardTheme` / `onBoardThemeChange` options and
+  `getBoardTheme()` / `setBoardTheme()` ship on the chrome; the demo persists the choice.
+- **Release mechanics.** Draft release first (no trigger), then published — this gh version
+  has no `gh release publish`; `gh release edit <tag> --draft=false` is the equivalent.
+  Registry read replication again lagged per-package (~2 min for konva after core/ui
+  resolved). One CI annotation worth a future look, not a failure: GitHub now forces the
+  Node-20-targeting actions (checkout/setup-node/pnpm-action) onto Node 24 runners.
+
+---
+
+## 2. 0.2.2 — wheel zoom, custom pickers, and R13 baseline application (2026-09-15)
 
 Scope: mouse-wheel zoom slowdown with `WheelEvent.deltaMode` normalization (T1), custom
 stroke/fill colour pickers (T2), and R13 — a whole document applies through the delta path
@@ -66,7 +112,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 2. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15)
+## 3. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15)
 
 Scope: the three open issues in `.design/bug-log.md`, plus the page-level coverage the clear-button
 regression showed was missing. All manifests at `0.2.1`, peers `^0.2.1` (the fifth manifest,
@@ -100,7 +146,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 3. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
+## 4. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
 
 Scope: P1 (version reflects the breaking release) and R11 (the visual contract: host-settable page
 background and grid, PNG export follows), per `.design/requirements.md` §1–§2. Status rows and the
@@ -129,7 +175,7 @@ R11 evidence, as the acceptance standard requires:
 
 ---
 
-## 4. v0.2 — host-readiness (2026-09-15)
+## 5. v0.2 — host-readiness (2026-09-15)
 
 Requirement source: CoStage's `docs/COSLATE-REPLACEMENT-REQUIREMENTS.md` (R1–R10, C1–C8, D1–D4).
 Requirement-by-requirement mapping: `.design/requirements-mapping.md` (local design docs).
@@ -194,7 +240,7 @@ editor — that is the chrome, and an audience does not download it.
 
 ---
 
-## 5. Re-verification — 2026-09-14 (i18n era, superseded)
+## 6. Re-verification — 2026-09-14 (i18n era, superseded)
 
 > Historical: this run predates v0.2 below. It recorded 97 unit tests and 20 e2e assertions; the
 > v0.2 run has 128 and 24. Kept because it is the evidence for the icon toolbar, the narrow-viewport
@@ -379,7 +425,7 @@ the text tool reads the placeholder out of the live `<textarea>` and requires `�
 the localized copy reaches the runtime rather than sitting in a constant. Screenshot:
 `.artifacts/t-zh-hant.png`.
 
-## 6. Original staging record — the v0.1 run (superseded)
+## 7. Original staging record — the v0.1 run (superseded)
 
 > The first verification run, kept as history: 72 unit tests and 16 e2e assertions against
 > the code as it stood at 0.1.0. Superseded by §1 in every respect.
