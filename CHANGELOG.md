@@ -9,13 +9,15 @@ anything may still change, but breaking changes are called out explicitly.
 ### Changed
 
 - **The style strip's "invisible on the dark chrome" samples are gone.** The
-  no-fill swatch was a red slash over the panel colour and the panel-fill
-  swatch showed the panel colour itself — both indistinguishable from the
-  toolbar. No-fill is now the universal grey/white transparency checkerboard,
-  and the panel-fill swatch samples in neutral grey (the colour it applies is
-  unchanged). The custom stroke picker wears a colour-wheel-and-eyedropper
-  glyph, and the custom fill picker a palette-and-brush; both keep the glyph
-  white over the chosen colour when active.
+  no-fill swatch is the universal grey/white transparency checkerboard (its
+  rule outranks the grouped-pill flattening rule, which had silently voided
+  every earlier sample style), and the panel/board-colour fill samples in
+  neutral grey (the colour it applies is unchanged). The custom stroke picker
+  is an unfilled square: it goes white over the swatch, which takes the chosen
+  colour as its background, when a custom stroke is active. The custom fill
+  picker is a framed square whose solid centre previews the current custom
+  colour — the centre changes with every pick, while the swatch background
+  stays neutral, so the colour always reads exactly once.
 
 ## 0.2.2 — baselines through the delta path, custom colours, calmer zoom (2026-09-15)
 

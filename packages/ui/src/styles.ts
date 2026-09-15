@@ -236,11 +236,14 @@ const STYLESHEET = `
   background: repeating-conic-gradient(#c9ced6 0% 25%, #ffffff 0% 50%) 50% / 10px 10px;
 }
 
-/* The custom-colour swatches carry a painter's-board glyph instead of a colour
-   sample: the glyph stays legible at 22 px on any background, where the earlier
-   colour-wheel gradient muddied to a dark disc. Idle shows the glyph on the
-   neutral panel; active keeps the same glyph over the chosen colour, drawn in
-   white with a dark halo so it survives any swatch colour (and any theme). */
+/* The custom pickers carry glyphs instead of colour samples. The stroke
+   picker is an unfilled square: idle shows the grey frame on the neutral
+   panel, and when a custom stroke is active the swatch background takes the
+   colour and the frame turns white, with a dark halo so it survives any
+   colour (and any theme). The fill picker keeps the neutral background in
+   both states — its glyph's solid centre carries the current custom colour,
+   set inline from the chrome — so only the stroke glyph needs the
+   white-on-colour treatment. */
 .coslate-ui .swatch-custom {
   display: flex;
   align-items: center;
@@ -248,37 +251,12 @@ const STYLESHEET = `
   background: var(--coslate-panel-alt);
 }
 
-.coslate-ui .swatch-custom-idle svg .palette-body {
-  color: var(--coslate-text);
-}
-
-.coslate-ui .swatch-custom-idle svg .palette-dab {
-  color: var(--coslate-panel-alt);
-}
-
 .coslate-ui .swatch-custom:not(.swatch-custom-idle) svg {
   filter: drop-shadow(0 0 0.7px rgba(0, 0, 0, 0.85));
 }
 
-.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .palette-body {
-  color: #fff;
-}
-
-.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .palette-dab {
-  color: rgba(0, 0, 0, 0.72);
-}
-
-/* The stroke custom swatch carries the colour-wheel glyph, which ships its
-   own literal fills; the active state recolours it to the same white-glyph-
-   on-the-chosen-colour treatment as the palette, so the colour stays the
-   signal and the glyph stays the identifier. */
-.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .picker-wheel,
-.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .picker-dropper {
+.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .stroke-frame {
   fill: #fff;
-}
-
-.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .picker-dark {
-  fill: rgba(0, 0, 0, 0.72);
 }
 
 .coslate-ui .color-input {

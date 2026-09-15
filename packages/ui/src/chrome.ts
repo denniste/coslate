@@ -363,7 +363,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     'data-testid': 'stroke-custom',
     'aria-pressed': 'false',
   });
-  strokeCustom.append(icon('colorWheel', 18));
+  strokeCustom.append(icon('strokeBox', 18));
   strokeCustom.addEventListener('click', () => strokeCustomInput.click());
   tooltip.bind(strokeCustom, () => ({ label: t('style.strokeCustom') }));
   style.append(strokeCustom, strokeCustomInput);
@@ -391,7 +391,9 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     'data-testid': 'fill-custom',
     'aria-pressed': 'false',
   });
-  fillCustom.append(icon('palette', 18));
+  const fillBoxIcon = icon('fillBox', 18);
+  const fillCustomCentre = fillBoxIcon.querySelector<SVGElement>('.fill-centre');
+  fillCustom.append(fillBoxIcon);
   fillCustom.addEventListener('click', () => fillCustomInput.click());
   tooltip.bind(fillCustom, () => ({ label: t('style.fillCustom') }));
   style.append(fillCustom, fillCustomInput);
@@ -488,8 +490,15 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
       typeof currentFill === 'string' && !FILL_OPTIONS.some((option) => option.value === currentFill);
     fillCustom.setAttribute('aria-pressed', String(fillCustomActive));
     fillCustom.classList.toggle('swatch-custom-idle', !fillCustomActive);
-    fillCustom.style.background = fillCustomActive ? currentFill : '';
     fillCustomInput.value = typeof currentFill === 'string' ? currentFill : '#ffffff';
+    // The fill picker's sample lives in the glyph's solid centre, not the
+    // swatch background: the centre previews the custom colour — what a pick
+    // applies — and stays put (showing the picker's held colour) when a fixed
+    // fill is active, so the colour always reads exactly once.
+    if (fillCustomCentre) {
+      fillCustomCentre.style.fill =
+        fillCustomActive && typeof currentFill === 'string' ? currentFill : fillCustomInput.value;
+    }
 
     undoButton.disabled = !summary.canUndo;
     redoButton.disabled = !summary.canRedo;
