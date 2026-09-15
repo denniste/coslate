@@ -1,6 +1,6 @@
 import './app.css';
 import { createSceneViewer } from '@coslate/konva';
-import type { GridAppearance, Scene, SceneDelta, Viewport } from '@coslate/core';
+import type { BaselineReadResult, GridAppearance, Scene, SceneDelta, Viewport } from '@coslate/core';
 
 /**
  * Read-only viewer entry.
@@ -31,6 +31,8 @@ declare global {
       getViewConfig(): { background: string; grid: GridAppearance };
       setBackground(color: string): void;
       setGrid(partial: Partial<GridAppearance>): void;
+      applyBaseline(scene: Scene): boolean;
+      loadBaseline(json: string): BaselineReadResult;
       destroy(): void;
     };
   }
@@ -47,5 +49,7 @@ window.__viewer = {
   }),
   setBackground: (color) => viewer.setBackground(color),
   setGrid: (partial) => viewer.setGrid(partial),
+  applyBaseline: (scene) => viewer.applyBaseline(scene),
+  loadBaseline: (json) => viewer.loadBaseline(json),
   destroy: () => viewer.destroy(),
 };

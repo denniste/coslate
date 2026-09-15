@@ -1,6 +1,9 @@
 import {
   createStore,
   DEFAULT_BACKGROUND,
+  diffScenes,
+  readBaseline,
+  type BaselineReadResult,
   type GridAppearance,
   type Id,
   type Scene,
@@ -48,6 +51,17 @@ export interface SceneViewer {
   setScene(scene: Scene): void;
   /** Apply one inbound message. Returns whether anything changed. */
   applyDelta(delta: SceneDelta): boolean;
+  /**
+   * Converge on a whole document through the same delta path peer updates use.
+   * Returns whether anything changed; `false` means already converged, and the
+   * scene reference is untouched. Never throws.
+   */
+  applyBaseline(scene: Scene): boolean;
+  /**
+   * Read a stored baseline without throwing (`readBaseline` semantics) and
+   * converge on it; `{ status: 'empty', reason }` leaves the document alone.
+   */
+  loadBaseline(json: string): BaselineReadResult;
   /**
    * Repaint the page background. View configuration, not document state — it
    * changes what this page (and any host-made export of it) looks like and
@@ -104,6 +118,18 @@ export function createSceneViewer(options: SceneViewerOptions): SceneViewer {
     renderer.resize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
   }
 
+  function applyBaseline(scene: Scene): boolean {
+    const delta = diffScenes(store.getState(), scene);
+    if (!delta) return false;
+    return store.applyDelta(delta);
+  }
+
+  function loadBaseline(json: string): BaselineReadResult {
+    const result = readBaseline(json);
+    if (result.status === 'ok') applyBaseline(result.scene);
+    return result;
+  }
+
   return {
     renderer,
     store,
@@ -112,6 +138,8 @@ export function createSceneViewer(options: SceneViewerOptions): SceneViewer {
       store.reset(scene);
     },
     applyDelta: (delta: SceneDelta) => store.applyDelta(delta),
+    applyBaseline,
+    loadBaseline,
     setBackground: (color: string) => renderer.setBackground(color),
     setGrid: (partial: Partial<GridAppearance>) => renderer.setGrid(partial),
     setViewport: (next: Viewport) => {

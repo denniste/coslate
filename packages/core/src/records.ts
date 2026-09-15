@@ -340,6 +340,64 @@ export function recordsFromCommands(scene: Scene, commands: readonly Command[]):
 }
 
 /**
+ * Content equality for {@link diffScenes} — like {@link sameRecord} but
+ * ignoring the `z` mirror.
+ *
+ * `z` is a denormalised mirror of the paint order, and local creation does not
+ * renumber it (a freshly made object carries `z: 0` at whatever order index it
+ * lands). Two scenes that agree on content and order but whose mirrors are
+ * stale in different ways are the *same* scene for baseline purposes — carrying
+ * that noise in a diff would break the "already converged is a free no-op"
+ * guarantee, and `applyDelta` renumbers the mirrors anyway whenever it applies
+ * anything.
+ */
+function sameRecordContent(a: SceneObject | undefined, b: SceneObject): boolean {
+  if (a === b) return true;
+  if (a === undefined) return false;
+  const { z: _ignoredA, ...restA } = a;
+  const { z: _ignoredB, ...restB } = b;
+  return JSON.stringify(restA) === JSON.stringify(restB);
+}
+
+/**
+ * Compute the delta that turns `from` into `to` — the same {@link SceneDelta}
+ * shape the wire uses, so a whole document (a stored baseline, a snapshot
+ * reply) can travel the *identical* apply path as ordinary peer updates:
+ * idempotent, atomic, and never an undo step.
+ *
+ * `added` and `updated` follow the wire convention (both upserts; the split is
+ * a hint). `order` is carried as the full target order whenever the two orders
+ * differ — `applyDelta` treats an order list as authoritative, so a partial
+ * list could not express removals from the paint order.
+ *
+ * Returns `null` when the scenes are equal — "nothing to send", the convention
+ * of {@link recordsFromCommands} — which is what makes a baseline poll that
+ * finds the document already converged a free no-op.
+ */
+export function diffScenes(from: Scene, to: Scene): SceneDelta | null {
+  const added: SceneObject[] = [];
+  const updated: SceneObject[] = [];
+  for (const [id, record] of Object.entries(to.objects)) {
+    const current = from.objects[id];
+    if (current === undefined) added.push(record);
+    else if (!sameRecordContent(current, record)) updated.push(record);
+  }
+  const removed: Id[] = [];
+  for (const id of Object.keys(from.objects)) {
+    if (!(id in to.objects)) removed.push(id);
+  }
+  const orderChanged = from.order.join('|') !== to.order.join('|');
+  if (added.length === 0 && updated.length === 0 && removed.length === 0 && !orderChanged) return null;
+
+  const delta: SceneDelta = {};
+  if (added.length > 0) delta.added = added;
+  if (updated.length > 0) delta.updated = updated;
+  if (removed.length > 0) delta.removed = removed;
+  if (orderChanged) delta.order = [...to.order];
+  return delta;
+}
+
+/**
  * Whether a change event should be broadcast.
  *
  * The echo guard excludes exactly one origin: `remote`. Undo and redo are *local*

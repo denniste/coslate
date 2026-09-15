@@ -52,6 +52,8 @@ export const zhHant: DemoCatalog = {
   'file.exportPng': '匯出 PNG',
   'file.saveJson': '儲存為 JSON',
   'file.loadJson': '從 JSON 載入',
+  'file.saveBaseline': '儲存基線',
+  'file.loadBaseline': '載入基線',
   'file.clear': '清空畫布',
 
   'style.stroke': '描邊 {color}',
@@ -74,6 +76,8 @@ export const zhHant: DemoCatalog = {
   'status.downloaded': '已下載 {file}',
   'status.loaded': '已載入 {file}',
   'status.loadFailed': '載入失敗：{error}',
+  'status.baselineLoaded': '已載入基線（{file}）',
+  'status.baselineEmpty': '未套用基線：{reason}',
   'status.restoreFailed': '還原失敗：{error}',
   'status.autosaveFailed': '自動儲存失敗：{error}',
 

@@ -236,6 +236,21 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     });
   });
 
+  const baselineInput = el('input', { type: 'file', accept: '.json,application/json', 'data-testid': 'load-baseline-input' });
+  baselineInput.style.display = 'none';
+  baselineInput.addEventListener('change', () => {
+    const file = baselineInput.files?.[0];
+    if (!file) return;
+    void file.text().then((text) => {
+      // loadBaseline never throws (readBaseline semantics): an unreadable blob
+      // comes back as { status: 'empty', reason } and the board stays as it was.
+      const result = editor.loadBaseline(text);
+      if (result.status === 'ok') applyStatus('status.baselineLoaded', { file: file.name });
+      else applyStatus('status.baselineEmpty', { reason: result.reason });
+      baselineInput.value = '';
+    });
+  });
+
   const io = group(
     'group.file',
     iconButton({
@@ -258,6 +273,18 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
       onClick: () => fileInput.click(),
     }),
     iconButton({
+      testId: 'save-baseline',
+      icon: 'baseline',
+      label: () => t('file.saveBaseline'),
+      onClick: () => editor.downloadBaseline('coslate-baseline.json'),
+    }),
+    iconButton({
+      testId: 'load-baseline',
+      icon: 'upload',
+      label: () => t('file.loadBaseline'),
+      onClick: () => baselineInput.click(),
+    }),
+    iconButton({
       testId: 'clear',
       icon: 'clearBoard',
       label: () => t('file.clear'),
@@ -267,6 +294,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
       onClick: () => editor.clearAll(),
     }),
     fileInput,
+    baselineInput,
   );
 
   // --- language ------------------------------------------------------------

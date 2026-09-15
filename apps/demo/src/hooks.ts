@@ -1,4 +1,13 @@
-import type { GridAppearance, Id, Point, Scene, SceneDelta, SceneStore, Viewport } from '@coslate/core';
+import type {
+  BaselineReadResult,
+  GridAppearance,
+  Id,
+  Point,
+  Scene,
+  SceneDelta,
+  SceneStore,
+  Viewport,
+} from '@coslate/core';
 import type { EditorStyle, EditorSummary, ToolName, WhiteboardEditor } from '@coslate/konva';
 
 /**
@@ -48,6 +57,14 @@ export interface CoSlateTestHook {
   clearAll(): number;
   toJSON(): string;
   loadJSON(text: string): void;
+  // Baselines (R13): a whole document converged through the delta path, never
+  // the destructive reset — the local undo stack survives an application.
+  /** Compact serialization a server baseline stores. */
+  getBaseline(): string;
+  /** Converge on a whole document via the delta path; false = already converged. */
+  applyBaseline(scene: Scene): boolean;
+  /** readBaseline + converge; never throws. The result is also kept on `window.__lastBaseline`. */
+  loadBaseline(text: string): BaselineReadResult;
   // Collaboration / read-only surfaces, so the suite can drive the same paths a
   // host would: a viewer that receives deltas, and permission that flips.
   isReadOnly(): boolean;
@@ -66,6 +83,8 @@ export interface CoSlateTestHook {
 declare global {
   interface Window {
     __scene?: CoSlateTestHook;
+    /** The last `loadBaseline` result, so the e2e suite can assert the never-throw contract. */
+    __lastBaseline?: BaselineReadResult;
   }
 }
 
@@ -106,6 +125,13 @@ export function installTestHook(editor: WhiteboardEditor): CoSlateTestHook {
     toJSON: () => editor.toJSON(),
     loadJSON: (text) => {
       editor.loadJSON(text);
+    },
+    getBaseline: () => editor.getBaseline(),
+    applyBaseline: (scene) => editor.applyBaseline(scene),
+    loadBaseline: (text) => {
+      const result = editor.loadBaseline(text);
+      window.__lastBaseline = result;
+      return result;
     },
   };
   window.__scene = hook;

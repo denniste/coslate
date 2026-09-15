@@ -45,6 +45,8 @@ export const zhCN: DemoCatalog = {
   'file.exportPng': '导出 PNG',
   'file.saveJson': '保存为 JSON',
   'file.loadJson': '从 JSON 载入',
+  'file.saveBaseline': '保存基线',
+  'file.loadBaseline': '载入基线',
   'file.clear': '清空画布',
 
   'style.stroke': '描边 {color}',
@@ -67,6 +69,8 @@ export const zhCN: DemoCatalog = {
   'status.downloaded': '已下载 {file}',
   'status.loaded': '已载入 {file}',
   'status.loadFailed': '载入失败：{error}',
+  'status.baselineLoaded': '已载入基线（{file}）',
+  'status.baselineEmpty': '未应用基线：{reason}',
   'status.restoreFailed': '恢复失败：{error}',
   'status.autosaveFailed': '自动保存失败：{error}',
 

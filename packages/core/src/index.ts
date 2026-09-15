@@ -122,6 +122,7 @@ export {
   deltaToCommands,
   deltaToInverseCommands,
   deltaToOps,
+  diffScenes,
   isEmptyDelta,
   normalizeDelta,
   recordsFromCommands,

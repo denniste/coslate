@@ -50,6 +50,8 @@ const ICONS = {
     '<rect x="3.5" y="5" width="17" height="14" rx="2.2"/><circle cx="8.6" cy="10" r="1.5"/><path d="M4.5 16.6l4.6-4.2 3.9 3.4 3.1-2.6 3.4 3.2"/>',
   download: '<path d="M12 4v10.6"/><path d="M8 11l4 4 4-4"/><path d="M5 19.5h14"/>',
   upload: '<path d="M12 20V9.4"/><path d="M8 13l4-4 4 4"/><path d="M5 4.5h14"/>',
+  // Two stacked panes: the snapshot/baseline glyph — "a copy of the board".
+  baseline: '<rect x="7" y="7" width="12.5" height="12.5" rx="2.2"/><rect x="4.5" y="4.5" width="12.5" height="12.5" rx="2.2"/>',
   clearBoard:
     '<rect x="4" y="5.5" width="16" height="13" rx="2.2"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/>',
 

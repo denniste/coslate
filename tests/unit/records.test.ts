@@ -6,6 +6,7 @@ import {
   deltaToCommands,
   deltaToInverseCommands,
   deserialize,
+  diffScenes,
   isEmptyDelta,
   isSceneEmpty,
   makeObject,
@@ -13,6 +14,7 @@ import {
   recordsFromCommands,
   removeObjectOps,
   reorderObjectOps,
+  sceneFromObjects,
   serialize,
   shouldBroadcast,
   updateObjectDataOps,
@@ -351,5 +353,99 @@ describe('records: delta normalization', () => {
     expect(normalizeDelta('ops')).toBeNull();
     expect(normalizeDelta({})).toBeNull();
     expect(normalizeDelta({ added: 'nope' })).toBeNull();
+  });
+});
+
+describe('records: diffScenes', () => {
+  const moved = (object: SceneObject, x: number): SceneObject => ({ ...object, x, data: { ...object.data } });
+
+  it('round-trips: applying the diff turns `from` into `to`, order included', () => {
+    const from = sceneFromObjects([rect('a', 0, 0), rect('b', 10, 0), rect('c', 20, 0)]);
+    const to = sceneFromObjects([moved(from.objects['a']!, 99), rect('d', 30, 0), moved(from.objects['c']!, 20)]);
+
+    const delta = diffScenes(from, to);
+    expect(delta).not.toBeNull();
+    expect(delta!.added?.map((record) => record.id)).toEqual(['d']);
+    expect(delta!.updated?.map((record) => record.id)).toEqual(['a']);
+    expect(delta!.removed).toEqual(['b']);
+    expect(delta!.order).toEqual(['a', 'd', 'c']);
+
+    const applied = applyDelta(from, delta!);
+    expect(applied).toEqual(to);
+    // z mirrors the converged order.
+    expect(applied.order.map((id) => applied.objects[id]!.z)).toEqual([0, 1, 2]);
+  });
+
+  it('returns null for equal scenes — the poll no-op case', () => {
+    const scene = sceneFromObjects([rect('a', 0, 0)]);
+    expect(diffScenes(scene, scene)).toBeNull();
+    expect(diffScenes(scene, deserialize(serialize(scene)))).toBeNull();
+    expect(diffScenes(sceneFromObjects([]), sceneFromObjects([]))).toBeNull();
+  });
+
+  it('carries an order change with the full target order', () => {
+    const from = sceneFromObjects([rect('a', 0, 0), rect('b', 10, 0)]);
+    const to = sceneFromObjects([from.objects['b']!, from.objects['a']!]);
+
+    const delta = diffScenes(from, to);
+    expect(delta?.order).toEqual(['b', 'a']);
+    // Object content is untouched — the `z` mirror renumber rides the order
+    // list, which is what applyDelta renumbers mirrors from.
+    expect(delta?.added).toBeUndefined();
+    expect(delta?.removed).toBeUndefined();
+    expect(delta?.updated).toBeUndefined();
+    expect(applyDelta(from, delta!)).toEqual(to);
+  });
+
+  it('ignores stale z mirrors: content and order equal means no diff', () => {
+    // Local creation leaves z unrenumbered (a fresh object carries z:0 at
+    // whatever index it lands). A baseline captured from such a scene must
+    // still no-op against a converged document whose mirrors were renumbered.
+    const withStaleMirror: Scene = {
+      ...sceneFromObjects([rect('a', 0, 0), rect('b', 10, 0)]),
+      objects: {
+        a: { ...rect('a', 0, 0), z: 0 },
+        b: { ...rect('b', 10, 0), z: 0 }, // stale: index 1 but mirror says 0
+      },
+    };
+    const fresh = sceneFromObjects([rect('a', 0, 0), rect('b', 10, 0)]);
+
+    expect(diffScenes(withStaleMirror, fresh)).toBeNull();
+    expect(diffScenes(fresh, withStaleMirror)).toBeNull();
+  });
+
+  it('is idempotent: a second application is a structural no-op', () => {
+    const from = sceneFromObjects([rect('a', 0, 0), rect('b', 10, 0)]);
+    const to = sceneFromObjects([moved(from.objects['a']!, 5)]);
+
+    const delta = diffScenes(from, to)!;
+    const once = applyDelta(from, delta);
+    expect(serialize(once)).toBe(serialize(to));
+    // Converged: no diff left, and replaying the same diff returns the same reference.
+    expect(diffScenes(once, to)).toBeNull();
+    expect(applyDelta(once, delta)).toBe(once);
+  });
+
+  it('survives the wire: a JSON round trip of the diff still converges', () => {
+    const from = sceneFromObjects([rect('a', 0, 0), rect('b', 10, 0)]);
+    const to = sceneFromObjects([moved(from.objects['b']!, 42), rect('c', 0, 30)]);
+
+    const wire = JSON.parse(JSON.stringify(diffScenes(from, to))) as SceneDelta;
+    const applied = applyDelta(from, normalizeDelta(wire)!);
+    expect(serialize(applied)).toBe(serialize(to));
+  });
+
+  it('diffs scenes of different sizes down to empty and back', () => {
+    const full = sceneFromObjects([rect('a', 0, 0), rect('b', 10, 0)]);
+    const empty = sceneFromObjects([]);
+
+    const down = diffScenes(full, empty)!;
+    expect(down.removed).toEqual(['a', 'b']);
+    expect(down.order).toEqual([]);
+    expect(serialize(applyDelta(full, down))).toBe(serialize(empty));
+
+    const up = diffScenes(empty, full)!;
+    expect(up.added?.map((record) => record.id)).toEqual(['a', 'b']);
+    expect(serialize(applyDelta(empty, up))).toBe(serialize(full));
   });
 });

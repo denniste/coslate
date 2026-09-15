@@ -3,9 +3,13 @@ import {
   addObjectOps,
   createEmptyScene,
   createStore,
+  deserialize,
+  diffScenes,
   makeObject,
   removeObjectOps,
   reorderObjectOps,
+  sceneFromObjects,
+  serialize,
   updateObjectOps,
   type ChangeEvent,
   type SceneStore,
@@ -267,6 +271,64 @@ describe('store: applyRemote', () => {
     store.applyRemote([{ nope: true } as never]);
     expect(errors).toHaveLength(1);
     expect(store.getState().order).toEqual([]);
+  });
+});
+
+describe('store: baseline apply', () => {
+  it('keeps pending local edits undoable across a baseline application (R13)', () => {
+    const store = createStore();
+    store.commit({ type: 'object.create', patch: addObjectOps(rect('a', 0, 0)) });
+    // The baseline was saved right after the create — target is that state.
+    const target = deserialize(serialize(store.getState()));
+    // A local edit lands after the baseline was taken: it is still pending.
+    store.commit({ type: 'object.move', patch: updateObjectOps('a', { x: 77 }) });
+    const depthBefore = store.historyDepth().undo;
+
+    const applied = store.applyDelta(diffScenes(store.getState(), target)!);
+    expect(applied).toBe(true);
+    expect(serialize(store.getState())).toBe(serialize(target));
+    // The application itself touched neither the undo depth nor the undo stack:
+    // one undo still reverts the local edit that preceded it.
+    expect(store.historyDepth().undo).toBe(depthBefore);
+    expect(store.undo()).toBe(true);
+    expect(store.getState().objects['a']!.x).toBe(0);
+  });
+
+  it('forks the redo branch, exactly like any other remote change', () => {
+    const store = createStore();
+    store.commit({ type: 'object.create', patch: addObjectOps(rect('a', 0, 0)) });
+    store.undo();
+    expect(store.canRedo()).toBe(true);
+
+    const target = sceneFromObjects([rect('z', 5, 5)]);
+    store.applyDelta(diffScenes(store.getState(), target)!);
+    expect(store.canRedo()).toBe(false);
+    expect(serialize(store.getState())).toBe(serialize(target));
+  });
+
+  it('a converged baseline is a free no-op: false, same scene reference, no event', () => {
+    const store = createStore();
+    store.commit({ type: 'object.create', patch: addObjectOps(rect('a', 0, 0)) });
+    const events: ChangeEvent[] = [];
+    store.subscribe((event) => events.push(event));
+
+    const converged = store.getState();
+    expect(diffScenes(converged, converged)).toBeNull();
+    expect(store.applyDelta({ added: [converged.objects['a']!], order: ['a'] })).toBe(false);
+    expect(store.getState()).toBe(converged);
+    expect(events).toHaveLength(0);
+  });
+
+  it('applies a baseline under a read-only posture: ingestion, not editing', () => {
+    // The editor gates its own mutating entry points on read-only, but a baseline
+    // arrives from outside — the same route a peer delta takes, so it must land.
+    const store = createStore();
+    store.commit({ type: 'object.create', patch: addObjectOps(rect('a', 0, 0)) });
+    const target = sceneFromObjects([rect('a', 0, 0), rect('b', 40, 40)]);
+    expect(store.applyDelta(diffScenes(store.getState(), target)!)).toBe(true);
+    expect(serialize(store.getState())).toBe(serialize(target));
+    expect(store.canUndo()).toBe(true);
+    expect(store.historyDepth().undo).toBe(1);
   });
 });
 

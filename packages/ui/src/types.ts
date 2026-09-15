@@ -55,6 +55,8 @@ export type ChromeMessageKey =
   | 'file.exportPng'
   | 'file.saveJson'
   | 'file.loadJson'
+  | 'file.saveBaseline'
+  | 'file.loadBaseline'
   | 'file.clear'
   // Style.
   | 'style.stroke'
@@ -73,6 +75,8 @@ export type ChromeMessageKey =
   | 'status.newScene'
   | 'status.loaded'
   | 'status.loadFailed'
+  | 'status.baselineLoaded'
+  | 'status.baselineEmpty'
   // The language menu's accessible name.
   | 'language.label';
 

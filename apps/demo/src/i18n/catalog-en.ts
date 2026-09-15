@@ -55,6 +55,8 @@ export const en = {
   'file.exportPng': 'Export PNG',
   'file.saveJson': 'Save scene as JSON',
   'file.loadJson': 'Load a scene from JSON',
+  'file.saveBaseline': 'Save baseline',
+  'file.loadBaseline': 'Load baseline',
   'file.clear': 'Clear the board',
 
   'style.stroke': 'Stroke {color}',
@@ -80,6 +82,8 @@ export const en = {
   'status.downloaded': 'downloaded {file}',
   'status.loaded': 'Loaded {file}',
   'status.loadFailed': 'Load failed: {error}',
+  'status.baselineLoaded': 'Baseline loaded ({file})',
+  'status.baselineEmpty': 'No baseline applied: {reason}',
   'status.restoreFailed': 'restore failed: {error}',
   'status.autosaveFailed': 'autosave failed: {error}',
 

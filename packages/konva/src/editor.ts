@@ -7,10 +7,12 @@ import {
   DEFAULT_BACKGROUND,
   DEFAULT_VIEWPORT,
   deserialize,
+  diffScenes,
   isObjectOfType,
   makeObject,
   newId,
   panBy,
+  readBaseline,
   removeObjectOps,
   reorderObjectOps,
   screenToWorld,
@@ -20,6 +22,7 @@ import {
   wheelZoomFactor,
   zoomAt,
   zoomTo,
+  type BaselineReadResult,
   type GridAppearance,
   type Id,
   type ObjectPropPatch,
@@ -73,6 +76,12 @@ export interface EditorOptions {
   /** Positioning context for the canvas and the text overlay. Must be `position: relative`. */
   container: HTMLElement;
   store?: SceneStore;
+  /**
+   * Initial document. Defaults to an empty scene; a host that opens a room from a
+   * stored baseline can pass it here instead of calling {@link loadBaseline}
+   * after mount. Ignored when `store` is given — the store's own scene wins.
+   */
+  scene?: Scene;
   style?: Partial<EditorStyle>;
   /**
    * Page background — the classroom board's colour, painted under everything and
@@ -199,7 +208,12 @@ export class WhiteboardEditor implements ToolHost {
     const width = options.width ?? Math.max(1, this.container.clientWidth);
     const height = options.height ?? Math.max(1, this.container.clientHeight);
 
-    this.store = options.store ?? createStore({ historyLimit: options.historyLimit });
+    this.store =
+      options.store ??
+      createStore({
+        ...(options.scene ? { scene: options.scene } : {}),
+        historyLimit: options.historyLimit,
+      });
     this.renderer = new SceneRenderer({
       container: this.canvasHost,
       width,
@@ -796,6 +810,48 @@ export class WhiteboardEditor implements ToolHost {
     return scene;
   }
 
+  // -------------------------------------------------------------- baselines
+  // A baseline is a whole document a host stores server-side (snapshot leg of
+  // collaboration). The three entry points below all converge through the delta
+  // path — the same `store.applyDelta` route ordinary peer updates take — so a
+  // baseline application is idempotent, atomic, and never an undo step. The
+  // local undo history survives it: the user's pending edits are still theirs
+  // to revert (R13).
+
+  /**
+   * The compact serialization a server baseline stores — one line, no
+   * pretty-printing. (`toJSON()` stays human-readable; baselines are for
+   * machines with an 8 MB cap.)
+   */
+  getBaseline(): string {
+    return serialize(this.store.getState());
+  }
+
+  /**
+   * Converge on a whole document through the delta path. Returns whether
+   * anything changed — `false` means the document already equalled the target,
+   * in which case no history entry, no repaint and no notify happen. Works
+   * under read-only: a baseline arrives from outside, like any peer update.
+   * Never throws.
+   */
+  applyBaseline(scene: Scene): boolean {
+    const delta = diffScenes(this.store.getState(), scene);
+    if (!delta) return false;
+    return this.store.applyDelta(delta);
+  }
+
+  /**
+   * Read a stored baseline (see `readBaseline` — never throws: an unreadable
+   * blob reports `{ status: 'empty', reason }` and leaves the board alone) and
+   * converge on it. The reason is returned, not swallowed, so a host can log
+   * why a baseline did not apply (another engine's cache, a future version…).
+   */
+  loadBaseline(text: string): BaselineReadResult {
+    const result = readBaseline(text);
+    if (result.status === 'ok') this.applyBaseline(result.scene);
+    return result;
+  }
+
   /**
    * Reset the document and **discard history**. This is "open a different board",
    * not "clear the board": the camera survives (it is not in the document) but
@@ -859,6 +915,11 @@ export class WhiteboardEditor implements ToolHost {
 
   downloadJSON(filename = 'coslate.scene.json'): void {
     this.download(new Blob([this.toJSON()], { type: 'application/json' }), filename);
+  }
+
+  /** Download the compact {@link getBaseline} serialization for server storage. */
+  downloadBaseline(filename = 'coslate-baseline.json'): void {
+    this.download(new Blob([this.getBaseline()], { type: 'application/json' }), filename);
   }
 
   private download(blob: Blob, filename: string): void {

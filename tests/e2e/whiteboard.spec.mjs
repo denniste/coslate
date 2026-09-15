@@ -1883,6 +1883,169 @@ try {
     },
   );
 
+  // ---------------------- af. baselines converge without touching local history
+  await check(
+    'af',
+    'a baseline converges through the delta path: pending edits stay undoable, no-op is free, and a bad one never throws',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+      await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+      const box = await page.locator('.coslate-canvas-host canvas').first().boundingBox();
+      const at = (x, y) => ({ x: box.x + x, y: box.y + y });
+      const doc = () => page.evaluate(() => window.__scene.getScene());
+
+      // A shape to snapshot, drawn for real; the board may hold earlier checks'
+      // work, so the new id comes from diffing the order array.
+      const orderBefore = (await doc()).order;
+      await page.click('[data-testid="tool-rect"]');
+      await page.mouse.move(at(420, 420).x, at(420, 420).y);
+      await page.mouse.down();
+      await page.mouse.move(at(560, 520).x, at(560, 520).y, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForFunction(
+        (before) => window.__scene.getScene().order.length === before.length + 1,
+        orderBefore,
+        { timeout: 5000 },
+      );
+      const rectId = (await doc()).order.find((id) => !orderBefore.includes(id));
+      const strokeBefore = (await doc()).objects[rectId].data.stroke;
+
+      // Save the baseline (compact, one line — the server's storage shape)…
+      const baseline = await page.evaluate(() => window.__scene.getBaseline());
+      assert.ok(!baseline.includes('\n'), 'a baseline is the compact serialization, not the pretty one');
+      const baselineScene = JSON.parse(baseline);
+      assert.ok(baselineScene.objects[rectId], 'the baseline carries the new shape');
+
+      // …then a local edit lands after the baseline was taken.
+      await page.evaluate(
+        ([id]) => {
+          window.__scene.setSelection([id]);
+          window.__scene.setStyle({ stroke: '#123456' });
+        },
+        [rectId],
+      );
+      assert.equal((await doc()).objects[rectId].data.stroke, '#123456', 'setup: the local recolour landed');
+
+      // Applying the baseline converges on it — and the local history is intact:
+      // undo depth unchanged, and the pre-baseline local entries still undo and
+      // redo (a reset()-style application would have made this impossible).
+      const depthBefore = await page.evaluate(() => window.__scene.store.historyDepth().undo);
+      const applied = await page.evaluate((text) => window.__scene.loadBaseline(text), baseline);
+      assert.equal(applied.status, 'ok', 'the stored baseline reads back cleanly');
+      assert.equal(applied.status, (await page.evaluate(() => window.__lastBaseline)).status);
+      assert.equal(
+        (await doc()).objects[rectId].data.stroke,
+        strokeBefore,
+        'the baseline converged the document back to the snapshot',
+      );
+      assert.equal(
+        await page.evaluate(() => window.__scene.store.historyDepth().undo),
+        depthBefore,
+        'applying a baseline must not touch the undo depth',
+      );
+
+      // Converged already: a second application is free — false, same reference, no repaint.
+      const noop = await page.evaluate(() => {
+        const before = window.__scene.getScene();
+        const changed = window.__scene.applyBaseline(window.__lastBaseline.scene);
+        return { changed, same: window.__scene.getScene() === before };
+      });
+      assert.deepEqual(noop, { changed: false, same: true }, 're-applying a converged baseline is a free no-op');
+
+      // One undo reverts the pending recolour. Its inverse restores the pre-edit
+      // value — which the baseline already converged to — so the visible stroke
+      // matches; the proof that this was a real undo step is the next one.
+      assert.equal(await page.evaluate(() => window.__scene.undo()), true, 'the pending local edit is still undoable');
+      // Two: the pre-baseline draw — the entry the baseline application itself
+      // had to survive — comes out, then both redo steps replay.
+      assert.equal(await page.evaluate(() => window.__scene.undo()), true, 'the pre-baseline edit is still there too');
+      assert.equal((await doc()).objects[rectId], undefined, 'the second undo removed the drawn shape');
+      assert.equal(await page.evaluate(() => window.__scene.redo()), true, 'redo replays the draw');
+      assert.equal(
+        (await doc()).objects[rectId].data.stroke,
+        strokeBefore,
+        'after redo the shape is back at the baseline colour',
+      );
+      assert.equal(await page.evaluate(() => window.__scene.redo()), true, 'redo replays the recolour');
+      assert.equal((await doc()).objects[rectId].data.stroke, '#123456', 'the local edit is back after redo');
+
+      // A baseline from a newer build (or another engine) never throws: the board
+      // stays exactly as usable as it was, and the reason is reported, not swallowed.
+      const beforeBad = await doc();
+      const bad = await page.evaluate(() => {
+        const future = JSON.stringify({ format: 'coslate/scene', version: 99, objects: {}, order: [] });
+        const result = window.__scene.loadBaseline(future);
+        return { status: result.status, reason: result.reason, recorded: window.__lastBaseline.reason };
+      });
+      assert.deepEqual(bad, { status: 'empty', reason: 'FUTURE_VERSION', recorded: 'FUTURE_VERSION' });
+      assert.deepEqual(await doc(), beforeBad, 'an unreadable baseline leaves the document alone');
+
+      // The chrome buttons: save-baseline downloads the compact serialization;
+      // load-baseline converges through the real file input and names its result.
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 15_000 }),
+        page.click('[data-testid="save-baseline"]'),
+      ]);
+      const downloaded = JSON.parse(await readFile(await download.path(), 'utf8'));
+      assert.equal(
+        JSON.stringify(downloaded),
+        await page.evaluate(() => window.__scene.getBaseline()),
+        'the save-baseline button downloads exactly what getBaseline() produces',
+      );
+
+      const baselineFile = path.join(ARTIFACTS, 'af-baseline.json');
+      await writeFile(baselineFile, baseline);
+      await page.setInputFiles('[data-testid="load-baseline-input"]', baselineFile);
+      // The status line is the observable side of the real file input; wait on
+      // its text, not on any hook state, so the check cannot race the handler.
+      await page.waitForFunction(() =>
+        document.querySelector('#statusbar .status-message')?.textContent?.includes('Baseline loaded'),
+      );
+      const loadedMessage = ((await page.locator('#statusbar .status-message').textContent()) ?? '').trim();
+      assert.match(loadedMessage, /Baseline loaded/, `status line should name the success, saw "${loadedMessage}"`);
+      assert.equal(
+        (await doc()).objects[rectId].data.stroke,
+        strokeBefore,
+        'the button-loaded baseline converged the document',
+      );
+
+      const futureFile = path.join(ARTIFACTS, 'af-future.json');
+      await writeFile(futureFile, JSON.stringify({ format: 'coslate/scene', version: 99, objects: {}, order: [] }));
+      await page.setInputFiles('[data-testid="load-baseline-input"]', futureFile);
+      await page.waitForFunction(() =>
+        document.querySelector('#statusbar .status-message')?.textContent?.includes('FUTURE_VERSION'),
+      );
+      const refusedMessage = ((await page.locator('#statusbar .status-message').textContent()) ?? '').trim();
+      assert.match(refusedMessage, /FUTURE_VERSION/, `the reason must be visible, saw "${refusedMessage}"`);
+      assert.equal(
+        (await doc()).objects[rectId].data.stroke,
+        strokeBefore,
+        'the refused baseline left the converged document alone',
+      );
+
+      // The viewer page converges on the same baseline through the same path.
+      await page.goto(`${BASE_URL}viewer.html`, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__viewer), null, { timeout: 10_000 });
+      const viewerResult = await page.evaluate((text) => window.__viewer.loadBaseline(text), baseline);
+      assert.equal(viewerResult.status, 'ok', 'the viewer reads the same baseline');
+      assert.deepEqual(
+        await page.evaluate(() => window.__viewer.getScene().order),
+        baselineScene.order,
+        'the viewer converged on the baseline order',
+      );
+      const viewerNoop = await page.evaluate((target) => {
+        const before = window.__viewer.getScene();
+        const changed = window.__viewer.applyBaseline(target);
+        return { changed, same: window.__viewer.getScene() === before };
+      }, baselineScene);
+      assert.deepEqual(viewerNoop, { changed: false, same: true }, 'the viewer replays a converged baseline for free');
+
+      await shot(page, 'af-baseline');
+      return 'delta-path convergence, one-undo local edit, free no-op, FUTURE_VERSION refused with reason, buttons + viewer';
+    },
+  );
+
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;
 } catch (error) {
   console.error('\nFATAL:', error instanceof Error ? error.stack : error);

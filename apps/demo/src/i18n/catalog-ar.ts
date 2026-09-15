@@ -50,6 +50,8 @@ export const ar: DemoCatalog = {
   'file.exportPng': 'تصدير PNG',
   'file.saveJson': 'حفظ بصيغة JSON',
   'file.loadJson': 'تحميل من ملف JSON',
+  'file.saveBaseline': 'حفظ الأساس',
+  'file.loadBaseline': 'تحميل الأساس',
   'file.clear': 'مسح اللوحة',
 
   'style.stroke': 'الحد {color}',
@@ -79,6 +81,8 @@ export const ar: DemoCatalog = {
   'status.downloaded': 'تم تنزيل {file}',
   'status.loaded': 'تم تحميل {file}',
   'status.loadFailed': 'فشل التحميل: {error}',
+  'status.baselineLoaded': 'تم تحميل الأساس ({file})',
+  'status.baselineEmpty': 'لم يُطبَّق الأساس: {reason}',
   'status.restoreFailed': 'فشل الاستعادة: {error}',
   'status.autosaveFailed': 'فشل الحفظ التلقائي: {error}',
 
