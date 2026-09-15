@@ -43,6 +43,22 @@ pnpm e2e        # builds the demo, then drives it in Playwright (fixed port 4321
 
 Node 20+ and pnpm 9+.
 
+### Versions and breaking changes
+
+Current release: **0.2.0** — see [CHANGELOG.md](./CHANGELOG.md) for the full list. The two breaking
+changes an upgrade to 0.2 needs to know about:
+
+- **`Scene` is v2 and the camera left the document.** The serialized document no longer carries a
+  `viewport`; the camera is per-user view state owned by the editor or viewer. v1 documents still
+  open — a registered migration drops the field — and a baseline that cannot be understood still
+  reports itself empty instead of throwing.
+- **The text tool no longer ships English copy.** The text field's placeholder and accessible name
+  are editor options (`textPlaceholder`, `textAriaLabel`); an embed that omits them gets an empty
+  field rather than a built-in English string.
+
+Host-facing API changes are always accompanied by a version bump and a note here and in
+`CHANGELOG.md`.
+
 ### Embedding it
 
 ```ts

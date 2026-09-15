@@ -1,6 +1,6 @@
 {
   "name": "@coslate/ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CoSlate embeddable UI chrome: toolbar, style controls, zoom, theme and status bar. Ships its own stylesheet and no copy.",
   "license": "MIT",
   "author": "CoSlate contributors",
@@ -42,7 +42,7 @@
     "typecheck": "tsc -b ."
   },
   "peerDependencies": {
-    "@coslate/konva": "^0.1.0"
+    "@coslate/konva": "^0.2.0"
   },
   "devDependencies": {
     "@coslate/konva": "workspace:*"
