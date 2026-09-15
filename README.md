@@ -45,7 +45,7 @@ Node 20+ and pnpm 9+.
 
 ### Versions and breaking changes
 
-Current release: **0.2.2** — see [CHANGELOG.md](./CHANGELOG.md) for the full list. The two breaking
+Current release: **0.2.3** — see [CHANGELOG.md](./CHANGELOG.md) for the full list. The two breaking
 changes an upgrade to 0.2 needs to know about:
 
 - **`Scene` is v2 and the camera left the document.** The serialized document no longer carries a

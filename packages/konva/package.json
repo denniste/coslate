@@ -1,6 +1,6 @@
 {
   "name": "@coslate/konva",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "CoSlate Konva renderer and editing tools. Renders a scene; never owns it.",
   "license": "MIT",
   "author": "CoSlate contributors",
@@ -51,7 +51,7 @@
     "konva": "^9.3.16"
   },
   "peerDependencies": {
-    "@coslate/core": "^0.2.2"
+    "@coslate/core": "^0.2.3"
   },
   "devDependencies": {
     "@coslate/core": "workspace:*"

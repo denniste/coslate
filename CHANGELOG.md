@@ -4,7 +4,7 @@ All notable changes to CoSlate are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver while `0.x` —
 anything may still change, but breaking changes are called out explicitly.
 
-## 0.2.3 (unreleased)
+## 0.2.3 — line styles, whiteboard/blackboard themes, picker icons (2026-09-16)
 
 ### Added
 
