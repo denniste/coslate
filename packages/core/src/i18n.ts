@@ -46,25 +46,28 @@ export function canonicalLocale(tag: string): string | null {
   }
 }
 
-// Scripts and languages written right-to-left. Only consulted when the runtime
-// cannot answer: `Intl.Locale.prototype.textInfo` (ES2024) is authoritative and
-// knows things a table cannot, e.g. that Kurdish in Latin script is LTR.
+// Scripts and languages written right-to-left. An explicit script subtag in the
+// tag is the writer's own declaration and beats everything else — including
+// `Intl.Locale.prototype.textInfo` (ES2024): that API is authoritative for
+// scripts no table entry covers, but its answer comes from the runtime's CLDR
+// data, and older CLDR answers 'ltr' for tags like 'ku-Arab'. Table first keeps
+// the well-known scripts stable across Node and browser versions.
 const RTL_SCRIPTS = new Set(['adlm', 'arab', 'hebr', 'nkoo', 'rohg', 'syrc', 'thaa', 'yezi']);
 const LTR_SCRIPTS = new Set(['cyrl', 'deva', 'grek', 'hang', 'hans', 'hant', 'hira', 'kana', 'latn', 'thai']);
 const RTL_LANGUAGES = new Set(['ar', 'arc', 'ckb', 'dv', 'fa', 'ha', 'he', 'khw', 'ks', 'ku', 'ps', 'sd', 'ug', 'ur', 'yi']);
 
 /** Writing direction for a locale tag; defaults to `ltr` for anything unknown. */
 export function localeDirection(tag: string): Direction {
+  const subtags = tag.toLowerCase().split('-').filter(Boolean);
+  if (subtags.some((part) => RTL_SCRIPTS.has(part))) return 'rtl';
+  if (subtags.some((part) => LTR_SCRIPTS.has(part))) return 'ltr';
   try {
     const locale = new Intl.Locale(tag) as Intl.Locale & { textInfo?: { direction?: string } };
     const direction = locale.textInfo?.direction;
     if (direction === 'rtl' || direction === 'ltr') return direction;
   } catch {
-    // Invalid tag: the table below still gets a chance.
+    // Invalid tag: the language table below still gets a chance.
   }
-  const subtags = tag.toLowerCase().split('-').filter(Boolean);
-  if (subtags.some((part) => RTL_SCRIPTS.has(part))) return 'rtl';
-  if (subtags.some((part) => LTR_SCRIPTS.has(part))) return 'ltr';
   return RTL_LANGUAGES.has(subtags[0] ?? '') ? 'rtl' : 'ltr';
 }
 

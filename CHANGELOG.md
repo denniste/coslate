@@ -6,6 +6,16 @@ anything may still change, but breaking changes are called out explicitly.
 
 ## 0.2.2 (unreleased)
 
+### Fixed
+
+- **`localeDirection` trusted the runtime's CLDR over an explicit script subtag.** The ES2024
+  `Intl.Locale.prototype.textInfo` was consulted before the direction tables, so the answer for
+  script-carrying tags depended on the runtime's CLDR vintage: Node 20's older data answers
+  `'ltr'` for `ku-Arab`, while newer runtimes answer `'rtl'` — the same tag flipped direction
+  by Node version (caught by the release workflow's first-ever CI run). An explicit script
+  subtag is now authoritative for the well-known scripts (stable across CLDR versions);
+  `textInfo` remains the fallback for scripts the tables do not cover.
+
 ### Added
 
 - **Custom colour pickers for stroke and fill.** Next to the fixed palette and
