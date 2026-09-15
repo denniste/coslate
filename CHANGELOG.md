@@ -4,6 +4,15 @@ All notable changes to CoSlate are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver while `0.x` —
 anything may still change, but breaking changes are called out explicitly.
 
+## 0.2.3 (unreleased)
+
+### Changed
+
+- **The custom stroke/fill colour buttons are now painter's-board icons.** The idle swatch was a
+  colour-wheel gradient that muddied to a dark, unclear disc at 22 px; both custom pickers now
+  show a board glyph on the neutral panel, and keep the same glyph — white with a dark halo, so
+  it survives any colour — over the chosen colour when active.
+
 ## 0.2.2 — baselines through the delta path, custom colours, calmer zoom (2026-09-15)
 
 ### Fixed

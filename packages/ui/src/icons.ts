@@ -58,6 +58,39 @@ const ICONS = {
   // chrome
   globe:
     '<circle cx="12" cy="12" r="8.2"/><path d="M3.8 12h16.4"/><path d="M12 3.8c2.2 2.4 3.3 5.2 3.3 8.2s-1.1 5.8-3.3 8.2c-2.2-2.4-3.3-5.2-3.3-8.2S9.8 6.2 12 3.8Z"/>',
+  // The custom-colour pickers: a painter's palette and brush (iconfont
+  // source), kept on its native 1024 grid and scaled into our 24px viewBox —
+  // the glyph fills the swatch at icon size, where the earlier hand-drawn
+  // palette read small. Board, dabs and brush are separate elements so the
+  // chrome can colour foreground and background independently: the dabs are
+  // the holes in the board and read as the secondary colour.
+  palette:
+    '<g transform="scale(0.0234375)">' +
+    '<path class="palette-body" fill="currentColor" stroke="none" ' +
+    'd="M835.642431 684.038119c117.19469 150.218096-37.528924 305.760896-255.636999 335.097969' +
+    'l-11.724589 1.433574 1.945565-1.843167a276.987014 276.987014 0 0 0 71.67871-195.734077' +
+    'l34.559378-14.079746a298.132234 298.132234 0 0 0 159.075537-124.925752z"/>' +
+    '<path class="palette-body" fill="currentColor" stroke="none" ' +
+    'd="M507.763532 0.018432c172.2337-1.382375 306.272887 76.030631 348.92172 170.236935' +
+    'l-168.444968 147.965337q-66.200408 58.162153-131.069641 117.75788' +
+    'c-82.78891 77.310608-90.161577 129.021678-108.695643 218.108074' +
+    'a239.611687 239.611687 0 0 0-189.743785 139.159096' +
+    'c-37.119332 63.230862-69.42595 66.558802-138.237512 48.383129' +
+    'A511.990784 511.990784 0 0 1 507.814732 0.018432z"/>' +
+    '<path class="palette-dab" fill="currentColor" stroke="none" ' +
+    'd="M214.03442 458.966971a85.246466 85.246466 0 1 0 60.619708 24.524358' +
+    ' 85.297665 85.297665 0 0 0-60.619708-24.524358z"/>' +
+    '<path class="palette-dab" fill="currentColor" stroke="none" ' +
+    'd="M299.536881 202.971579a85.092868 85.092868 0 1 0 60.414912 24.473159' +
+    ' 85.092868 85.092868 0 0 0-60.414912-24.473159z"/>' +
+    '<path class="palette-dab" fill="currentColor" stroke="none" ' +
+    'd="M555.532273 117.673914a85.195266 85.195266 0 1 0 60.466111 24.370761' +
+    ' 85.297665 85.297665 0 0 0-60.466111-24.268363z"/>' +
+    '<path class="palette-body" fill="currentColor" stroke="none" ' +
+    'd="M477.300081 737.89955l78.385789 65.432422' +
+    'c19.558048 236.283747-269.409551 288.967599-385.068269 127.997696' +
+    ' 195.682878 16.383705 125.591339-191.535752 306.68248-193.430118z"/>' +
+    '</g>',
 } as const;
 
 export type IconName = keyof typeof ICONS;

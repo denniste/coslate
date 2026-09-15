@@ -361,6 +361,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     'data-testid': 'stroke-custom',
     'aria-pressed': 'false',
   });
+  strokeCustom.append(icon('palette', 18));
   strokeCustom.addEventListener('click', () => strokeCustomInput.click());
   tooltip.bind(strokeCustom, () => ({ label: t('style.strokeCustom') }));
   style.append(strokeCustom, strokeCustomInput);
@@ -388,6 +389,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     'data-testid': 'fill-custom',
     'aria-pressed': 'false',
   });
+  fillCustom.append(icon('palette', 18));
   fillCustom.addEventListener('click', () => fillCustomInput.click());
   tooltip.bind(fillCustom, () => ({ label: t('style.fillCustom') }));
   style.append(fillCustom, fillCustomInput);

@@ -233,11 +233,36 @@ const STYLESHEET = `
     var(--coslate-panel-alt);
 }
 
-/* The custom-colour swatch when no custom colour is active: a small colour
-   wheel, so it reads as "pick any colour" rather than as a ninth palette
-   entry. Once a custom value is set the inline background replaces it. */
-.coslate-ui .swatch-custom-idle {
-  background: conic-gradient(from 180deg, #ff6b6b, #f9c74f, #90be6d, #4dabf7, #9775fa, #ff6b6b);
+/* The custom-colour swatches carry a painter's-board glyph instead of a colour
+   sample: the glyph stays legible at 22 px on any background, where the earlier
+   colour-wheel gradient muddied to a dark disc. Idle shows the glyph on the
+   neutral panel; active keeps the same glyph over the chosen colour, drawn in
+   white with a dark halo so it survives any swatch colour (and any theme). */
+.coslate-ui .swatch-custom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--coslate-panel-alt);
+}
+
+.coslate-ui .swatch-custom-idle svg .palette-body {
+  color: var(--coslate-text);
+}
+
+.coslate-ui .swatch-custom-idle svg .palette-dab {
+  color: var(--coslate-panel-alt);
+}
+
+.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg {
+  filter: drop-shadow(0 0 0.7px rgba(0, 0, 0, 0.85));
+}
+
+.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .palette-body {
+  color: #fff;
+}
+
+.coslate-ui .swatch-custom:not(.swatch-custom-idle) svg .palette-dab {
+  color: rgba(0, 0, 0, 0.72);
 }
 
 .coslate-ui .color-input {
