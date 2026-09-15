@@ -9,3 +9,6 @@ coverage/
 # Stage-local package store (pnpm) and TypeScript build cache: neither belongs in git.
 .pnpm-store/
 .tsbuild/
+
+# 未收束的设计/需求草稿：只在本机协作，不进公开仓库（也不进 npm 包）
+.design/
