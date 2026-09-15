@@ -58,10 +58,12 @@ export const en = {
   'file.clear': 'Clear the board',
 
   'style.stroke': 'Stroke {color}',
+  'style.strokeCustom': 'Custom stroke colour',
   'style.width': '{width}px stroke',
   'style.fill.none': 'No fill',
   'style.fill.white': 'White fill',
   'style.fill.panel': 'Panel fill',
+  'style.fillCustom': 'Custom fill',
 
   // Status bar counters.
   'status.tool': 'tool',

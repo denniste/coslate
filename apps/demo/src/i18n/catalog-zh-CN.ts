@@ -48,10 +48,12 @@ export const zhCN: DemoCatalog = {
   'file.clear': '清空画布',
 
   'style.stroke': '描边 {color}',
+  'style.strokeCustom': '自定义描边颜色',
   'style.width': '线宽 {width} 像素',
   'style.fill.none': '无填充',
   'style.fill.white': '白色填充',
   'style.fill.panel': '面板色填充',
+  'style.fillCustom': '自定义填充颜色',
 
   'status.tool': '工具',
   'status.selection': '已选',

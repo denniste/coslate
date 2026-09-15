@@ -55,10 +55,12 @@ export const zhHant: DemoCatalog = {
   'file.clear': '清空畫布',
 
   'style.stroke': '描邊 {color}',
+  'style.strokeCustom': '自訂描邊顏色',
   'style.width': '線寬 {width} 像素',
   'style.fill.none': '無填色',
   'style.fill.white': '白色填色',
   'style.fill.panel': '面板色填色',
+  'style.fillCustom': '自訂填色',
 
   'status.tool': '工具',
   'status.selection': '已選',

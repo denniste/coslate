@@ -320,6 +320,23 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     style.append(swatch);
   }
 
+  // The custom swatch: a button (testid, pressed state, tooltip) opening a
+  // hidden native colour input. Only `change` is applied — the picker fires it
+  // once when dismissed — so one pick is exactly one setStyle, i.e. one undo
+  // step when it restyles a selection. Live `input` preview is deliberately
+  // skipped to keep that invariant (see the changelog).
+  const strokeCustomInput = el('input', { type: 'color', class: 'color-input', 'data-testid': 'stroke-custom-input' });
+  strokeCustomInput.addEventListener('change', () => editor.setStyle({ stroke: strokeCustomInput.value }));
+  const strokeCustom = el('button', {
+    type: 'button',
+    class: 'swatch swatch-custom swatch-custom-idle',
+    'data-testid': 'stroke-custom',
+    'aria-pressed': 'false',
+  });
+  strokeCustom.addEventListener('click', () => strokeCustomInput.click());
+  tooltip.bind(strokeCustom, () => ({ label: t('style.strokeCustom') }));
+  style.append(strokeCustom, strokeCustomInput);
+
   style.append(separator());
   for (const option of FILL_OPTIONS) {
     const testId = option.value === null ? 'fill-none' : `fill-${option.value.replace('#', '')}`;
@@ -335,6 +352,17 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     fillButtons.set(String(option.value), swatch);
     style.append(swatch);
   }
+  const fillCustomInput = el('input', { type: 'color', class: 'color-input', 'data-testid': 'fill-custom-input' });
+  fillCustomInput.addEventListener('change', () => editor.setStyle({ fill: fillCustomInput.value }));
+  const fillCustom = el('button', {
+    type: 'button',
+    class: 'swatch swatch-custom swatch-custom-idle',
+    'data-testid': 'fill-custom',
+    'aria-pressed': 'false',
+  });
+  fillCustom.addEventListener('click', () => fillCustomInput.click());
+  tooltip.bind(fillCustom, () => ({ label: t('style.fillCustom') }));
+  style.append(fillCustom, fillCustomInput);
 
   style.append(separator());
   for (const width of STROKE_WIDTHS) {
@@ -412,6 +440,24 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     setPressed(strokeButtons, editor.style.stroke);
     setPressed(fillButtons, String(editor.style.fill));
     setPressed(widthButtons, editor.style.strokeWidth);
+
+    // The custom pickers carry the pressed state for any value the fixed
+    // options do not cover; the input opens at the current colour so picking
+    // starts where the user already is. (Invalid values — a host may set any
+    // CSS colour — are silently ignored by the input, never a throw.)
+    const strokeCustomActive = !STROKE_PALETTE.includes(editor.style.stroke);
+    strokeCustom.setAttribute('aria-pressed', String(strokeCustomActive));
+    strokeCustom.classList.toggle('swatch-custom-idle', !strokeCustomActive);
+    strokeCustom.style.background = strokeCustomActive ? editor.style.stroke : '';
+    strokeCustomInput.value = editor.style.stroke;
+
+    const currentFill = editor.style.fill;
+    const fillCustomActive =
+      typeof currentFill === 'string' && !FILL_OPTIONS.some((option) => option.value === currentFill);
+    fillCustom.setAttribute('aria-pressed', String(fillCustomActive));
+    fillCustom.classList.toggle('swatch-custom-idle', !fillCustomActive);
+    fillCustom.style.background = fillCustomActive ? currentFill : '';
+    fillCustomInput.value = typeof currentFill === 'string' ? currentFill : '#ffffff';
 
     undoButton.disabled = !summary.canUndo;
     redoButton.disabled = !summary.canRedo;

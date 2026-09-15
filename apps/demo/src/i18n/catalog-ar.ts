@@ -53,10 +53,12 @@ export const ar: DemoCatalog = {
   'file.clear': 'مسح اللوحة',
 
   'style.stroke': 'الحد {color}',
+  'style.strokeCustom': 'لون حد مخصص',
   'style.width': 'سماكة {width} بكسل',
   'style.fill.none': 'بلا تعبئة',
   'style.fill.white': 'تعبئة بيضاء',
   'style.fill.panel': 'تعبئة بلون اللوحة',
+  'style.fillCustom': 'تعبئة مخصصة',
 
   'status.tool': 'الأداة',
   'status.selection': 'التحديد',

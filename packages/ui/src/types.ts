@@ -58,10 +58,12 @@ export type ChromeMessageKey =
   | 'file.clear'
   // Style.
   | 'style.stroke'
+  | 'style.strokeCustom'
   | 'style.width'
   | 'style.fill.none'
   | 'style.fill.white'
   | 'style.fill.panel'
+  | 'style.fillCustom'
   // Status bar: the four counter labels, the initial message and the two the
   // chrome raises itself (a load that worked, a load that did not).
   | 'status.tool'

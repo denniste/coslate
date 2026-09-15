@@ -233,6 +233,17 @@ const STYLESHEET = `
     var(--coslate-panel-alt);
 }
 
+/* The custom-colour swatch when no custom colour is active: a small colour
+   wheel, so it reads as "pick any colour" rather than as a ninth palette
+   entry. Once a custom value is set the inline background replaces it. */
+.coslate-ui .swatch-custom-idle {
+  background: conic-gradient(from 180deg, #ff6b6b, #f9c74f, #90be6d, #4dabf7, #9775fa, #ff6b6b);
+}
+
+.coslate-ui .color-input {
+  display: none;
+}
+
 .coslate-ui .width-button {
   min-width: 30px;
   height: 30px;
