@@ -6,13 +6,14 @@
 > plain history, not as a resolvable reference.
 
 > **This file is a log, newest first.** The current state of the project is the
-> [0.2.3 run (line styles, board themes, picker icons)](#1-023--line-styles-board-themes-and-picker-icons-2026-09-16-current) right below:
-> **178 unit tests, 34/34 end-to-end assertions, both demo pages building, all three packages
-> published to npm at 0.2.3 with SLSA provenance**. Everything after it is kept as history —
-> §2 is the 0.2.2 run (wheel zoom, custom pickers, R13 baselines, 164/32), §3 the 0.2.1 run
-> (bug-log O1/O2/O3, 148/29), §4 the 0.2.0 run (P1 + R11, 144/26), §5 the
-> v0.2 host-readiness run (137 tests, 24/24... recorded as 128 at the time), §6 the i18n-era run
-> (20/20) and §7 the original v0.1 record (16/16). Where any of them disagree with the newest,
+> [0.2.4 run (text typography menus)](#1-024--text-typography-menus-2026-09-16-current) right below:
+> **183 unit tests, 35/35 end-to-end assertions, both demo pages building, all three packages
+> published to npm at 0.2.4 with SLSA provenance**. Everything after it is kept as history —
+> §2 is the 0.2.3 run (line styles, board themes, picker icons, 178/34), §3 the 0.2.2 run
+> (wheel zoom, custom pickers, R13 baselines, 164/32), §4 the 0.2.1 run
+> (bug-log O1/O2/O3, 148/29), §5 the 0.2.0 run (P1 + R11, 144/26), §6 the
+> v0.2 host-readiness run (137 tests, 24/24... recorded as 128 at the time), §7 the i18n-era run
+> (20/20) and §8 the original v0.1 record (16/16). Where any of them disagree with the newest,
 > the newest wins.
 
 Everything below was executed in this directory on the staging machine. Raw output for the
@@ -24,7 +25,51 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ---
 
-## 1. 0.2.3 — line styles, board themes, and picker icons (2026-09-16, current)
+## 1. 0.2.4 — text typography menus (2026-09-16, current)
+
+Scope: font-family and font-size menus for text. Two native selects in the chrome's style
+strip (same rationale as the language menu), fed by `FONT_FAMILIES` / `FONT_SIZES` in
+`konva/src/style.ts` — four generic system stacks (sans default / serif / monospace /
+handwriting; the runtime ships no font files) and 12–48px with the documented 20px default.
+One pick is one `setStyle`: it presets the next text object (the DOM typing overlay previews
+the stack and size live) and restyles selected text objects — box re-measured — in one undo
+step. A host-set value outside the menu surfaces as its own raw-labelled option, like the
+custom colour swatch; the menus retranslate with the locale. +6 chrome copy keys (54→60, all
+four demo catalogs), plus the README header screenshot. All five manifests at `0.2.4`, peers
+`^0.2.3` (unchanged — the new surface is additive). No model change: text already carried
+`fontFamily` / `fontSize`; `SCENE_VERSION` stays 2, no migration.
+
+| Step | Result |
+| --- | --- |
+| `pnpm typecheck` | PASS — 5 TypeScript projects (core, konva, ui, demo, tests), zero errors |
+| `pnpm test` | PASS — **183/183 in 12 files** (new `text typography model` suite) |
+| `pnpm e2e` | PASS — **35/35 assertions** (a–z, aa–ah, plus new `ai` font menus), `pageErrors = []` |
+| `pnpm pack` self-check (core / konva / ui) | PASS — dist-only tarballs, versions 0.2.4, deps pinned `0.2.4` (no `workspace:*` leakage), peers `^0.2.3` |
+| publish workflow (release `published`) | SUCCESS — third run of the trusted-publisher/OIDC path, green on the first attempt |
+| `npm view` + headless consumer smoke | PASS — all three at 0.2.4 with SLSA provenance attestations; a clean consumer installs `@coslate/core@0.2.4` from the registry and imports it headless, building text objects with the picked stacks through `makeObject` / `diffScenes` |
+
+Evidence, per the acceptance standard:
+
+- **Preset and preview.** e2e **`ai`** picks Serif + 36px, then asserts the typing overlay's
+  own `fontFamily` / `fontSize` before a character is committed, and the committed
+  `shape.text` carrying both values.
+- **Selection restyle.** With the text selected, the same menus apply the mono stack and
+  16px; the object is re-measured (the resize is part of the same transaction). Each pick is
+  one undo step — two undos walk back to the committed look, matching the line-style
+  contract in `ag`.
+- **Honesty about custom values.** A programmatic `setStyle({ fontFamily })` outside the
+  menu shows up as a raw-labelled extra option with the live value selected — the menu can
+  never disagree with the editor state. Locale switching retranslates both menu labels and
+  their accessible names (54→60 keys, all four catalogs, no leaked keys per e2e `s`/`t`).
+- **Release mechanics.** Draft release first (no trigger), then
+  `gh release edit 0.2.4 --draft=false`; registry read replication again lagged per-package
+  (konva needed ~2 min / 6 retries after core and ui resolved). Known boundary, recorded for
+  the next iteration: clicking the toolbar while the typing overlay is open commits the text
+  first (blur-commits) — mid-typing font switching would want an overlay-owned control.
+
+---
+
+## 2. 0.2.3 — line styles, board themes, and picker icons (2026-09-16)
 
 Scope: line styles (solid / dashed / dash-dot) across model, renderer and toolbar; the
 whiteboard / blackboard switch (page background + grid through the view-config rule, chrome
@@ -69,7 +114,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 2. 0.2.2 — wheel zoom, custom pickers, and R13 baseline application (2026-09-15)
+## 3. 0.2.2 — wheel zoom, custom pickers, and R13 baseline application (2026-09-15)
 
 Scope: mouse-wheel zoom slowdown with `WheelEvent.deltaMode` normalization (T1), custom
 stroke/fill colour pickers (T2), and R13 — a whole document applies through the delta path
@@ -112,7 +157,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 3. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15)
+## 4. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15)
 
 Scope: the three open issues in `.design/bug-log.md`, plus the page-level coverage the clear-button
 regression showed was missing. All manifests at `0.2.1`, peers `^0.2.1` (the fifth manifest,
@@ -146,7 +191,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 4. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
+## 5. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
 
 Scope: P1 (version reflects the breaking release) and R11 (the visual contract: host-settable page
 background and grid, PNG export follows), per `.design/requirements.md` §1–§2. Status rows and the
@@ -175,7 +220,7 @@ R11 evidence, as the acceptance standard requires:
 
 ---
 
-## 5. v0.2 — host-readiness (2026-09-15)
+## 6. v0.2 — host-readiness (2026-09-15)
 
 Requirement source: CoStage's `docs/COSLATE-REPLACEMENT-REQUIREMENTS.md` (R1–R10, C1–C8, D1–D4).
 Requirement-by-requirement mapping: `.design/requirements-mapping.md` (local design docs).
@@ -240,7 +285,7 @@ editor — that is the chrome, and an audience does not download it.
 
 ---
 
-## 6. Re-verification — 2026-09-14 (i18n era, superseded)
+## 7. Re-verification — 2026-09-14 (i18n era, superseded)
 
 > Historical: this run predates v0.2 below. It recorded 97 unit tests and 20 e2e assertions; the
 > v0.2 run has 128 and 24. Kept because it is the evidence for the icon toolbar, the narrow-viewport
@@ -425,7 +470,7 @@ the text tool reads the placeholder out of the live `<textarea>` and requires `�
 the localized copy reaches the runtime rather than sitting in a constant. Screenshot:
 `.artifacts/t-zh-hant.png`.
 
-## 7. Original staging record — the v0.1 run (superseded)
+## 8. Original staging record — the v0.1 run (superseded)
 
 > The first verification run, kept as history: 72 unit tests and 16 e2e assertions against
 > the code as it stood at 0.1.0. Superseded by §1 in every respect.
