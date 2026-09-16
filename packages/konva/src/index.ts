@@ -25,13 +25,15 @@ export { createObjectNode, measureText, textAttrs, updateObjectNode } from './no
 export {
   cloneStyle,
   DEFAULT_STYLE,
+  FONT_FAMILIES,
+  FONT_SIZES,
   STROKE_PALETTE,
   STROKE_STYLES,
   STROKE_WIDTHS,
   styleDataFor,
   stylePatchOps,
 } from './style.js';
-export type { EditorStyle, StyleKey } from './style.js';
+export type { EditorStyle, FontFamilyLabelKey, StyleKey } from './style.js';
 
 export { TextOverlay } from './text-overlay.js';
 export type { TextOverlayOptions } from './text-overlay.js';

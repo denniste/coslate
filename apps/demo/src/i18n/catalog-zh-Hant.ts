@@ -69,6 +69,12 @@ export const zhHant: DemoCatalog = {
   'style.fill.white': '白色填色',
   'style.fill.panel': '面板色填色',
   'style.fillCustom': '自訂填色',
+  'style.fontFamily': '字體',
+  'style.fontSize': '字號',
+  'style.font.sans': '無襯線',
+  'style.font.serif': '襯線',
+  'style.font.mono': '等寬',
+  'style.font.hand': '手寫',
 
   'status.tool': '工具',
   'status.selection': '已選',

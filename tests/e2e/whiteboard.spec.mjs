@@ -911,7 +911,7 @@ try {
     }
     await page.setViewportSize({ width: 1280, height: 820 });
     assert.deepEqual(problems, [], `narrow-layout problems: ${problems.join(' | ')}`);
-    return `7 widths, 320-1024px, all 22 controls reachable; canvas height ${heights.join(' ')}`;
+    return `7 widths, 320-1024px, every control reachable; canvas height ${heights.join(' ')}`;
   });
 
   // ------------------------------------------------------------------ s. i18n
@@ -2254,6 +2254,104 @@ try {
       await samplePageLayerUntil(page, (s) => s.modal === '20,22,26');
 
       return 'one click flips page+grid+chrome+icons+export, survives reload, document byte-identical';
+    },
+  );
+
+  await check(
+    'ai',
+    'the font-family / font-size menus preset the next text, restyle a selection in one undo, and stay honest about custom values',
+    async () => {
+      await page.goto(BASE_URL, { waitUntil: 'load' });
+      await page.waitForFunction(() => Boolean(window.__scene), null, { timeout: 10_000 });
+      await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+
+      const SERIF = 'Georgia, Cambria, Times New Roman, serif';
+      const MONO = 'SFMono-Regular, Consolas, Menlo, monospace';
+      const SANS = 'Inter, system-ui, -apple-system, Segoe UI, sans-serif';
+      const familyValue = () => page.$eval('[data-testid="font-family-select"]', (n) => n.value);
+      const sizeValue = () => page.$eval('[data-testid="font-size-select"]', (n) => n.value);
+
+      // The menus open on the documented default typography.
+      assert.equal(await familyValue(), SANS, 'the font menu opens on the default stack');
+      assert.equal(await sizeValue(), '20', 'the size menu opens on the default 20');
+
+      // One pick each presets the editor style; the open editor overlay wears it live.
+      await page.selectOption('[data-testid="font-family-select"]', { label: 'Serif' });
+      await page.selectOption('[data-testid="font-size-select"]', '36');
+      assert.equal(await familyValue(), SERIF, 'the family menu reflects the pick');
+      assert.equal(await sizeValue(), '36', 'the size menu reflects the pick');
+
+      await page.click('[data-testid="tool-text"]');
+      const spot = at(420, 300);
+      await page.mouse.click(spot.x, spot.y);
+      await page.waitForSelector('textarea.coslate-text-overlay', { timeout: 5000 });
+      const overlayFont = await page.$eval('textarea.coslate-text-overlay', (n) => ({
+        family: n.style.fontFamily,
+        size: n.style.fontSize,
+      }));
+      // The CSS serializer quotes multi-word family names; compare unquoted.
+      assert.equal(overlayFont.family.replace(/"/g, ''), SERIF, 'the typing overlay previews the picked stack');
+      assert.equal(overlayFont.size, '36px', 'the typing overlay previews the picked size');
+      await page.keyboard.type('Styled words');
+      await page.keyboard.press('Enter');
+
+      await page.waitForFunction(
+        () => Object.values(window.__scene.getScene().objects).some((o) => o.type === 'shape.text' && o.data.text === 'Styled words'),
+        null,
+        { timeout: 5000 },
+      );
+      const scene1 = await getScene(page);
+      const text1 = objectsOfType(scene1, 'shape.text').find((o) => o.data.text === 'Styled words');
+      assert.equal(text1.data.fontFamily, SERIF, 'the committed text carries the picked stack');
+      assert.equal(text1.data.fontSize, 36, 'the committed text carries the picked size');
+      const textBox = { width: text1.width, height: text1.height };
+
+      // The same menus restyle a selected text object — geometry follows.
+      await page.click('[data-testid="tool-select"]');
+      await page.evaluate((id) => window.__scene.editor.setSelection([id]), text1.id);
+      await page.selectOption('[data-testid="font-family-select"]', { label: 'Monospace' });
+      await page.selectOption('[data-testid="font-size-select"]', '16');
+      const restyled = (await getScene(page)).objects[text1.id];
+      assert.equal(restyled.data.fontFamily, MONO, 'the selection took the mono stack');
+      assert.equal(restyled.data.fontSize, 16, 'the selection took the 16px size');
+      assert.ok(
+        Math.abs(restyled.width - textBox.width) > 1 || Math.abs(restyled.height - textBox.height) > 1,
+        'the text box was re-measured after the restyle',
+      );
+
+      // One pick is one undo step (same contract as the line-style buttons):
+      // undoing twice walks the restyle back to the committed look.
+      await page.click('[data-testid="undo"]');
+      const halfReverted = (await getScene(page)).objects[text1.id];
+      assert.equal(halfReverted.data.fontFamily, MONO, 'the mono stack survives the first undo');
+      assert.equal(halfReverted.data.fontSize, 36, 'the first undo restores the 36px size');
+      await page.click('[data-testid="undo"]');
+      const reverted = (await getScene(page)).objects[text1.id];
+      assert.equal(reverted.data.fontFamily, SERIF, 'the second undo restores the serif stack');
+      assert.equal(reverted.data.fontSize, 36, 'the size stays at the committed 36px');
+
+      // A value outside the menu (any host-set stack) gets an honest extra option.
+      const CUSTOM = 'Comic Sans MS, cursive';
+      await page.evaluate((stack) => window.__scene.editor.setStyle({ fontFamily: stack }), CUSTOM);
+      assert.equal(await familyValue(), CUSTOM, 'the menu follows a programmatic style change');
+      const customOption = await page.$eval('[data-testid="font-family-select"]', (n) => {
+        const option = [...n.options].find((o) => o.value === n.value);
+        return option ? option.textContent : null;
+      });
+      assert.equal(customOption, CUSTOM, 'a custom stack surfaces as its own raw-labelled option');
+
+      // The menus retranslate with the locale instead of leaking keys.
+      await page.selectOption('[data-testid="locale-select"]', 'zh-CN');
+      const zhLabels = await page.$eval('[data-testid="font-family-select"]', (n) => ({
+        serif: [...n.options].map((o) => o.textContent),
+        aria: n.getAttribute('aria-label'),
+      }));
+      assert.equal(zhLabels.aria, '字体', 'the family menu accessible name is localized');
+      assert.ok(zhLabels.serif.includes('衬线'), `the Serif entry localized, saw ${zhLabels.serif.join(' / ')}`);
+      await page.selectOption('[data-testid="locale-select"]', 'en');
+
+      await shot(page, 'ai-font-menus');
+      return 'preset, live overlay preview, selection restyle in one undo, custom values and locales all land';
     },
   );
 

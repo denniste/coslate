@@ -62,6 +62,12 @@ export const zhCN: DemoCatalog = {
   'style.fill.white': '白色填充',
   'style.fill.panel': '面板色填充',
   'style.fillCustom': '自定义填充颜色',
+  'style.fontFamily': '字体',
+  'style.fontSize': '字号',
+  'style.font.sans': '无衬线',
+  'style.font.serif': '衬线',
+  'style.font.mono': '等宽',
+  'style.font.hand': '手写',
 
   'status.tool': '工具',
   'status.selection': '已选',

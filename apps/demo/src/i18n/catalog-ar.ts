@@ -67,6 +67,12 @@ export const ar: DemoCatalog = {
   'style.fill.white': 'تعبئة بيضاء',
   'style.fill.panel': 'تعبئة بلون اللوحة',
   'style.fillCustom': 'تعبئة مخصصة',
+  'style.fontFamily': 'الخط',
+  'style.fontSize': 'حجم الخط',
+  'style.font.sans': 'بدون زوائد',
+  'style.font.serif': 'مزوّد بزوائد',
+  'style.font.mono': 'أحادي المسافة',
+  'style.font.hand': 'خط يد',
 
   'status.tool': 'الأداة',
   'status.selection': 'التحديد',

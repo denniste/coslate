@@ -73,6 +73,13 @@ export type ChromeMessageKey =
   | 'style.fill.white'
   | 'style.fill.panel'
   | 'style.fillCustom'
+  // Text typography menus (font family / font size selects).
+  | 'style.fontFamily'
+  | 'style.fontSize'
+  | 'style.font.sans'
+  | 'style.font.serif'
+  | 'style.font.mono'
+  | 'style.font.hand'
   // Status bar: the four counter labels, the initial message and the two the
   // chrome raises itself (a load that worked, a load that did not).
   | 'status.tool'

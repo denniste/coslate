@@ -366,6 +366,36 @@ const STYLESHEET = `
   color: var(--coslate-text);
 }
 
+/* The two typography menus reuse the language menu's treatment: a native
+   select that blends into the strip until hovered. */
+.coslate-ui .font-select {
+  height: 30px;
+  padding: 0 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--coslate-radius-md);
+  color: var(--coslate-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.coslate-ui .font-select:hover {
+  background: var(--coslate-hover);
+}
+
+.coslate-ui .font-select option {
+  background: var(--coslate-panel-alt);
+  color: var(--coslate-text);
+}
+
+.coslate-ui .font-family-select {
+  max-width: 120px;
+}
+
+.coslate-ui .font-size-select {
+  max-width: 64px;
+}
+
 .coslate-ui .zoom-label {
   min-width: 50px;
   height: 30px;
@@ -541,6 +571,18 @@ const STYLESHEET = `
   .coslate-ui .language-select {
     height: 28px;
     max-width: 108px;
+  }
+
+  .coslate-ui .font-select {
+    height: 28px;
+  }
+
+  .coslate-ui .font-family-select {
+    max-width: 96px;
+  }
+
+  .coslate-ui .font-size-select {
+    max-width: 56px;
   }
 
   .coslate-ui .status-hint {

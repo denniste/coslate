@@ -72,6 +72,12 @@ export const en = {
   'style.fill.white': 'White fill',
   'style.fill.panel': 'Panel fill',
   'style.fillCustom': 'Custom fill',
+  'style.fontFamily': 'Font family',
+  'style.fontSize': 'Font size',
+  'style.font.sans': 'Sans-serif',
+  'style.font.serif': 'Serif',
+  'style.font.mono': 'Monospace',
+  'style.font.hand': 'Handwriting',
 
   // Status bar counters.
   'status.tool': 'tool',

@@ -4,6 +4,26 @@ All notable changes to CoSlate are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver while `0.x` —
 anything may still change, but breaking changes are called out explicitly.
 
+## Unreleased — text typography menus (字体 / 字号)
+
+### Added
+
+- **Font family and font size menus for text.** The style strip gains two native
+  selects (same rationale as the language menu: keyboard navigation, screen-reader
+  support and mobile pickers for free). The font menu lists four *generic system
+  stacks* — sans (default), serif, monospace and handwriting — because the runtime
+  ships no font files; each menu entry renders in the stack it selects, so the label
+  is its own sample. The size menu offers 12–48px with the documented 20px default.
+  One pick is one `setStyle`: it presets the editor style the next text object is
+  committed with (the typing overlay previews it live) and restyles any selected
+  text objects — box re-measured — in one undo step. A value the host sets outside
+  the menu (any CSS stack or size) surfaces as its own honest extra option, exactly
+  like the custom colour swatch, and the menus retranslate with the locale.
+  `FONT_FAMILIES` / `FONT_SIZES` live in `@coslate/konva`'s style module;
+  +6 chrome copy keys (`style.fontFamily`, `style.fontSize`, `style.font.sans|serif|
+  mono|hand`, 54→60, all four demo catalogs). Proven by the `fontstyle` unit suite
+  and e2e `ai` (35 checks).
+
 ## 0.2.3 — line styles, whiteboard/blackboard themes, picker icons (2026-09-16)
 
 ### Added

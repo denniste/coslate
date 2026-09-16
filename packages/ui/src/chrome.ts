@@ -1,4 +1,4 @@
-import { BOARD_THEMES, STROKE_PALETTE, STROKE_STYLES, STROKE_WIDTHS, TOOL_NAMES, type BoardThemeName, type ToolName } from '@coslate/konva';
+import { BOARD_THEMES, FONT_FAMILIES, FONT_SIZES, STROKE_PALETTE, STROKE_STYLES, STROKE_WIDTHS, TOOL_NAMES, type BoardThemeName, type ToolName } from '@coslate/konva';
 import { icon, type IconName } from './icons.js';
 import { ensureChromeStyles } from './styles.js';
 import { applyTheme, clearTheme } from './theme.js';
@@ -506,6 +506,63 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     style.append(node);
   }
 
+  // --- text typography -------------------------------------------------------
+  // Two native selects, same rationale as the language menu: keyboard
+  // navigation, screen-reader support and mobile pickers for free. One pick is
+  // one setStyle — the preset for the next text, and a restyle of any selected
+  // text objects, in one undo step. A value the host set outside the menu (any
+  // CSS font stack / size) gets its own honest extra option, exactly like the
+  // custom colour swatch — the menu always reflects the live style.
+  const fontFamilySelect = el('select', { class: 'font-select font-family-select', 'data-testid': 'font-family-select' });
+  fontFamilySelect.addEventListener('change', () => editor.setStyle({ fontFamily: fontFamilySelect.value }));
+  tooltip.bind(fontFamilySelect, () => ({ label: t('style.fontFamily') }));
+  style.append(separator(), fontFamilySelect);
+
+  const fontSizeSelect = el('select', { class: 'font-select font-size-select', 'data-testid': 'font-size-select' });
+  fontSizeSelect.addEventListener('change', () => editor.setStyle({ fontSize: Number(fontSizeSelect.value) }));
+  tooltip.bind(fontSizeSelect, () => ({ label: t('style.fontSize') }));
+  style.append(fontSizeSelect);
+
+  /**
+   * Rebuild both option lists against the live style. Runs on every render
+   * (including locale switches, so the menu labels retranslate) and appends a
+   * single "custom" option carrying the raw value when the live style is not in
+   * the fixed menu — same contract as the custom swatch's pressed state.
+   */
+  function syncFontSelects(): void {
+    fontFamilySelect.setAttribute('aria-label', t('style.fontFamily'));
+    const family = editor.style.fontFamily;
+    fontFamilySelect.textContent = '';
+    for (const option of FONT_FAMILIES) {
+      const node = el('option', { value: option.value });
+      node.textContent = t(option.labelKey);
+      // The label previews in the stack it selects — the menu is its own sample.
+      node.style.fontFamily = option.value;
+      fontFamilySelect.append(node);
+    }
+    if (!FONT_FAMILIES.some((option) => option.value === family)) {
+      const node = el('option', { value: family });
+      node.textContent = family;
+      fontFamilySelect.append(node);
+    }
+    fontFamilySelect.value = family;
+
+    fontSizeSelect.setAttribute('aria-label', t('style.fontSize'));
+    const size = editor.style.fontSize;
+    fontSizeSelect.textContent = '';
+    for (const option of FONT_SIZES) {
+      const node = el('option', { value: String(option) });
+      node.textContent = String(option);
+      fontSizeSelect.append(node);
+    }
+    if (!FONT_SIZES.includes(size)) {
+      const node = el('option', { value: String(size) });
+      node.textContent = String(size);
+      fontSizeSelect.append(node);
+    }
+    fontSizeSelect.value = String(size);
+  }
+
   // The toolbar fills its container; the inner wrapper carries the padding so
   // the container-query width is the true available width (see styles.ts).
   const main = el('div', { class: 'toolbar-main' });
@@ -565,6 +622,7 @@ export function createChrome<K extends string>(options: ChromeOptions<K>): Chrom
     setPressed(widthButtons, editor.style.strokeWidth);
     setPressed(lineStyleButtons, editor.style.strokeStyle);
     setPressed(boardButtons, boardTheme);
+    syncFontSelects();
 
     // The custom pickers carry the pressed state for any value the fixed
     // options do not cover; the input opens at the current colour so picking

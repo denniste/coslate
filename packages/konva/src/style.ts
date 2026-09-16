@@ -44,6 +44,32 @@ export const STROKE_WIDTHS: readonly number[] = [1, 2, 4, 8];
 /** Line-style options, in strip order. Index 0 is the default. */
 export const STROKE_STYLES: readonly StrokeStyle[] = ['solid', 'dashed', 'dashDot'];
 
+/**
+ * i18n keys the host catalog must cover for the font-family menu labels.
+ * Kept as a literal union so the chrome's `t()` stays fully typed.
+ */
+export type FontFamilyLabelKey = 'style.font.sans' | 'style.font.serif' | 'style.font.mono' | 'style.font.hand';
+
+/**
+ * The font-family menu for text. Every option is a *generic system stack* —
+ * the runtime ships no font files (AGENTS.md: nothing non-open-source may
+ * ship), so each entry names a family class the host OS is expected to provide.
+ * Index 0 is the default and matches {@link DEFAULT_STYLE}.
+ */
+export const FONT_FAMILIES: readonly { labelKey: FontFamilyLabelKey; value: string }[] = [
+  { labelKey: 'style.font.sans', value: 'Inter, system-ui, -apple-system, Segoe UI, sans-serif' },
+  { labelKey: 'style.font.serif', value: 'Georgia, Cambria, Times New Roman, serif' },
+  { labelKey: 'style.font.mono', value: 'SFMono-Regular, Consolas, Menlo, monospace' },
+  { labelKey: 'style.font.hand', value: 'Segoe Print, Bradley Hand, Chalkboard SE, cursive' },
+];
+
+/**
+ * The font-size menu for text, in strip order. Index 2 (20) is the default and
+ * matches {@link DEFAULT_STYLE}; renderers treat a missing `fontSize` as 20
+ * anyway, so old documents need no migration.
+ */
+export const FONT_SIZES: readonly number[] = [12, 16, 20, 28, 36, 48];
+
 export function cloneStyle(style: EditorStyle): EditorStyle {
   return { ...style };
 }
