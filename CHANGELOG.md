@@ -4,7 +4,7 @@ All notable changes to CoSlate are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver while `0.x` —
 anything may still change, but breaking changes are called out explicitly.
 
-## Unreleased — text typography menus (字体 / 字号)
+## 0.2.4 — text typography menus (字体 / 字号) (2026-09-16)
 
 ### Added
 

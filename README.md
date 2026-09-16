@@ -2,6 +2,8 @@
 
 **An open interactive scene runtime — the whiteboard core, not the whole product.**
 
+![CoSlate demo: the whiteboard with a small flowchart — shapes, arrows and text in different fonts on the white board](coslate-header.png)
+
 CoSlate is a small, dependency-light TypeScript runtime for building whiteboards, diagram
 editors, annotation layers and canvas tools *inside your own product*. It gives you the hard,
 boring, load-bearing parts — a document model, an invertible command protocol, undo/redo,
