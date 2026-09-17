@@ -33,7 +33,8 @@ import {
   type TextData,
   type Viewport,
 } from '@coslate/core';
-import { hitTest as hitTestScene } from './geometry.js';
+import { boundArrowOps, resolveAnchorWorld, stripBindingOps } from './binding.js';
+import { hitTest as hitTestScene, worldToLocal } from './geometry.js';
 import { measureText } from './nodes.js';
 import { SceneRenderer } from './renderer.js';
 import { DEFAULT_STYLE, stylePatchOps, type EditorStyle, type StyleKey } from './style.js';
@@ -241,6 +242,9 @@ export class WhiteboardEditor implements ToolHost {
     });
     this.transformer.visible(false);
     this.overlay.add(this.transformer);
+    this.transformer.on('transform', () => {
+      if (this.selection.length > 0) this.updateBoundArrowsTransient(this.selection);
+    });
     this.transformer.on('transformend', () => this.commitTransform());
 
     this.textOverlay = new TextOverlay(this.container);
@@ -436,6 +440,53 @@ export class WhiteboardEditor implements ToolHost {
     return this.renderer.getNode(id);
   }
 
+  /**
+   * Keep bound connector ends glued to boxes that are mid-gesture (select-tool
+   * drag, transformer resize/rotate). Recomputes from the *nodes'* live
+   * positions and only repaints — the document stays untouched until the
+   * gesture commits, which then re-derives the same endpoints for the store.
+   */
+  updateBoundArrowsTransient(movedIds: readonly Id[]): void {
+    if (movedIds.length === 0) return;
+    const moved = new Set(movedIds);
+    const attrsOf = (node: Konva.Shape) => ({
+      x: node.x(),
+      y: node.y(),
+      rotation: node.rotation(),
+      scaleX: node.scaleX(),
+      scaleY: node.scaleY(),
+      width: node.width(),
+      height: node.height(),
+    });
+    const scene = this.store.getState();
+    for (const id of scene.order) {
+      const object = scene.objects[id];
+      if (!object || (!isObjectOfType(object, 'shape.line') && !isObjectOfType(object, 'shape.arrow'))) continue;
+      const { start, end } = object.data;
+      if (!(start && moved.has(start.id)) && !(end && moved.has(end.id))) continue;
+      const node = this.renderer.getNode(id);
+      if (!(node instanceof Konva.Line)) continue;
+      const arrowBox = attrsOf(node);
+      const points = node.points().slice();
+      const follow = (binding: NonNullable<typeof start>, atStart: boolean): void => {
+        const targetNode = this.renderer.getNode(binding.id);
+        if (!targetNode) return;
+        const local = worldToLocal(arrowBox, resolveAnchorWorld(attrsOf(targetNode), binding));
+        if (atStart && points.length >= 2) {
+          points[0] = local.x;
+          points[1] = local.y;
+        } else if (!atStart && points.length >= 2) {
+          points[points.length - 2] = local.x;
+          points[points.length - 1] = local.y;
+        }
+      };
+      if (start && moved.has(start.id)) follow(start, true);
+      if (end && moved.has(end.id)) follow(end, false);
+      node.points(points);
+    }
+    this.renderer.batchDraw();
+  }
+
   requestDraw(): void {
     this.overlay.batchDraw();
   }
@@ -514,6 +565,12 @@ export class WhiteboardEditor implements ToolHost {
             );
           }
         }
+        // A restyled text box may have re-measured: bound connectors follow in
+        // the same transaction.
+        const follow = boundArrowOps(store.getState(), ids);
+        if (follow.length > 0) {
+          store.dispatch(tx.commit('object.update', follow, { label: 'Style' }));
+        }
       },
       { label: 'Change style' },
     );
@@ -550,6 +607,12 @@ export class WhiteboardEditor implements ToolHost {
       (_scene, tx) => {
         for (const id of ids) {
           store.dispatch(tx.commit('object.delete', removeObjectOps(store.getState(), id), { label: 'Delete' }));
+        }
+        // Survivors lose bindings to the deleted in the same transaction; the
+        // remove inverts to an add of the prior value, so undo restores both.
+        const strip = stripBindingOps(store.getState(), ids);
+        if (strip.length > 0) {
+          store.dispatch(tx.commit('object.update', strip, { label: 'Delete' }));
         }
       },
       { label: ids.length > 1 ? `Delete ${ids.length} objects` : 'Delete' },
@@ -652,6 +715,12 @@ export class WhiteboardEditor implements ToolHost {
               label: 'Edit text',
             }),
           );
+          // Editing text re-measures the box; bound connectors follow in the
+          // same transaction.
+          const follow = boundArrowOps(store.getState(), [id]);
+          if (follow.length > 0) {
+            store.dispatch(tx.commit('object.update', follow, { label: 'Edit text' }));
+          }
         },
         { label: 'Edit text' },
       );
@@ -1210,6 +1279,12 @@ export class WhiteboardEditor implements ToolHost {
             continue;
           }
           store.dispatch(tx.commit('object.update', updateObjectOps(entry.id, entry.props), { label: 'Resize' }));
+        }
+        // Bound connectors follow the resized/rotated boxes in the same
+        // transaction, so one gesture is one undo step.
+        const follow = boundArrowOps(store.getState(), ids);
+        if (follow.length > 0) {
+          store.dispatch(tx.commit('object.update', follow, { label: 'Resize' }));
         }
       },
       { label: pending.length > 1 ? `Resize ${pending.length} objects` : 'Resize' },

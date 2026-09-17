@@ -58,6 +58,13 @@ export interface ToolHost {
   hitTest(world: Point): SceneObject | null;
   getNode(id: Id): Konva.Shape | undefined;
 
+  /**
+   * While a gesture is mid-flight (drag, transformer resize/rotate), keep
+   * connector ends bound to the moving boxes glued to them. Purely visual:
+   * nothing reaches the store until the gesture commits.
+   */
+  updateBoundArrowsTransient(movedIds: readonly Id[]): void;
+
   /** Repaint the overlay layer after moving/creating preview nodes. */
   requestDraw(): void;
   /** Keep the selection transformer aligned with preview node positions. */
