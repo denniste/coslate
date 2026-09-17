@@ -1,6 +1,6 @@
 {
   "name": "coslate-monorepo",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "description": "CoSlate \u2014 an open interactive scene runtime (whiteboard core, not the whole product).",
   "license": "MIT",

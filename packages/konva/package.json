@@ -1,6 +1,6 @@
 {
   "name": "@coslate/konva",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "CoSlate Konva renderer and editing tools. Renders a scene; never owns it.",
   "license": "MIT",
   "author": "CoSlate contributors",

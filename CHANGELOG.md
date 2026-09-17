@@ -4,6 +4,34 @@ All notable changes to CoSlate are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver while `0.x` —
 anything may still change, but breaking changes are called out explicitly.
 
+## 0.2.5 — connector endpoint binding (R14) (2026-09-17)
+
+### Added
+
+- **Lines and arrows can bind to boxes.** A connector drawn from (or onto) a
+  rect, ellipse or text box within 8 screen px of its edge snaps to the
+  nearest point and glues: the end records a normalized anchor
+  (`start` / `end` on `LineData`, the flowchart/sequence-diagram foundation)
+  and follows the box through moves, resizes, rotations and text re-measures
+  — while a drag or transformer gesture is in flight the glued ends track the
+  nodes visually, and the commit re-derives the stored `points` in the same
+  transaction, so one gesture is still one undo step. Deleting a bound box
+  strips survivors' bindings in the same transaction (the stored points stand;
+  undoing the delete restores the binding for free, because a patch `remove`
+  inverts to an `add` of the prior value). `points` stay the authoritative
+  geometry — renderers, PNG export, the read-only viewer and wire sync are
+  untouched, and a consumer that knows nothing about bindings renders and
+  round-trips a bound connector correctly, so the wire format gains no version
+  bump (the `strokeStyle` precedent). Freehand ink never binds; line and arrow
+  share the fields. Pure helpers (`nearestAnchor`, `snapEndpoint`,
+  `resolveAnchorWorld`, `boundArrowOps`, `stripBindingOps`) live in
+  `@coslate/konva`'s `binding.ts`, free of any Konva import. Known, accepted
+  boundaries: mixed-version peers do not re-derive arrows until a same-version
+  client moves the box; duplicating a bound arrow keeps pointing at the
+  original box (tldraw behaviour); re-dragging a single endpoint to re-bind is
+  deferred to a follow-up. Proven by the `binding` unit suite (27 tests) and
+  e2e `aj` (36 checks).
+
 ## 0.2.4 — text typography menus (字体 / 字号) (2026-09-16)
 
 ### Added
