@@ -162,7 +162,7 @@ describe('binding: boundArrowOps', () => {
   });
 
   it('follows a baked resize', () => {
-    const { scene, rectId, arrowId } = boundScene();
+    const { scene, rectId } = boundScene();
     const moved = scene.objects[rectId]!;
     const next: Scene = {
       ...scene,
@@ -173,7 +173,7 @@ describe('binding: boundArrowOps', () => {
   });
 
   it('follows a rotation', () => {
-    const { scene, rectId, arrowId } = boundScene();
+    const { scene, rectId } = boundScene();
     const moved = scene.objects[rectId]!;
     const next: Scene = {
       ...scene,
