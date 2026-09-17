@@ -1,9 +1,25 @@
-# R14（草稿·未收束）— 连接器端点绑定（流程图/时序图共享底座）
+# R14 — 连接器端点绑定（流程图/时序图共享底座）
 
-> 状态：**草稿·未收束**。本文件在 `.design/`（不公开）；实现并验收通过后，把收束版写回
-> `.design/requirements.md`（§5 把 "arrow binding to shapes" 划线提升），并更新
+> 状态：**已实现**（0.2.5，2026-09-17）。原始草稿动机与取舍保留如下；收束版已写回
+> `.design/requirements.md`（§5 划线，R14 章节 + §7 状态行）并更新
 > `.design/requirements-mapping.md`。提出方：项目自身路线图（2026-09-17，流程图/时序图
 > 需求讨论，四档分层中的 Tier B；Tier C 结构化图表对象、自动布局另立项）。
+
+## 实现与证据
+
+- 类型：`EndpointBinding` + `LineData.start?/end?`（`packages/core/src/types.ts`；可选字段，
+  缺失 = 自由端，不升 SCENE_VERSION——strokeStyle 先例）。
+- 纯助手：`nearestAnchor` / `snapEndpoint` / `resolveAnchorWorld` / `boundArrowOps` /
+  `stripBindingOps`（`packages/konva/src/binding.ts`，零 Konva 导入）。
+- 创建吸附：`packages/konva/src/tools/shape.ts`（8 屏幕 px，取全场景最近盒周）。
+- 提交路径：`packages/konva/src/editor.ts`（`commitTransform` / `deleteSelection` /
+  `applyStyleToSelection` / `commitText` 同事务追加 `boundArrowOps`/`stripBindingOps`；
+  瞬态 `updateBoundArrowsTransient` 挂 transformer `transform` 事件）；`tools/select.ts`
+  （拖拽瞬态 + `commitDrag`）、`tools/eraser.ts`（同事务剥离）。
+- 验收：`tests/unit/binding.test.ts`（27 测试）+ e2e `aj`（36 检查全绿）。
+- 实现中确认的语义：落笔在盒**内部**时吸附到对应的内部锚点（"从框内起笔的箭头"跟随框），
+  测试固化为预期行为。
+- 延后不变：端点重拖拽（+1–2 天，纯增量，只消费本层助手）。
 
 ## 为什么需要
 
