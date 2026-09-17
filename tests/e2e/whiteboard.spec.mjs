@@ -2355,6 +2355,152 @@ try {
     },
   );
 
+  // ------------------------------------------- aj. connector endpoint binding
+  await check('aj', 'bound arrows follow boxes through move, resize, delete and reload', async () => {
+    const drag = async (from, to) => {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 12 });
+      await page.mouse.up();
+    };
+    const toClient = async (wx, wy) => {
+      const screen = await page.evaluate(([x, y]) => window.__scene.worldToScreen(x, y), [wx, wy]);
+      return { x: box.x + screen.x, y: box.y + screen.y };
+    };
+
+    // A clean board with a pinned camera, so every input lands on-screen.
+    await page.evaluate(() => window.__scene.clearAll());
+    await page.waitForFunction(() => window.__scene.getScene().order.length === 0);
+    await page.evaluate(() => window.__scene.editor.setViewport({ x: 0, y: 0, scale: 1 }));
+
+    await page.click('[data-testid="tool-rect"]');
+    await drag(await toClient(300, 300), await toClient(500, 420));
+    await page.waitForFunction(() => window.__scene.getScene().order.length === 1);
+
+    // 1 — an arrow starting on the rect's right-edge midpoint binds to it.
+    await page.click('[data-testid="tool-arrow"]');
+    await drag(await toClient(500, 360), await toClient(700, 360));
+    await page.waitForFunction(() => window.__scene.getScene().order.length === 2);
+
+    let scene = await getScene(page);
+    const rect = objectsOfType(scene, 'shape.rect')[0];
+    const arrow = objectsOfType(scene, 'shape.arrow')[0];
+    assert.ok(rect && arrow, 'expected one rect and one arrow');
+    assert.equal(arrow.data.start?.id, rect.id, 'the start bound to the rect');
+    assert.ok(Math.abs(arrow.data.start.x - 1) < 0.01, `start anchor x ~1, got ${round(arrow.data.start.x)}`);
+    assert.ok(Math.abs(arrow.data.start.y - 0.5) < 0.01, `start anchor y ~0.5, got ${round(arrow.data.start.y)}`);
+    assert.equal(arrow.data.end, undefined, 'the far end stays free');
+    const rectId = rect.id;
+    const arrowId = arrow.id;
+    const rectBefore = { x: rect.x, y: rect.y };
+    const pointsBefore = [...arrow.data.points];
+    const arrowOrigin = { x: arrow.x, y: arrow.y };
+
+    // 2 — dragging the box re-derives the stored start; the free end is untouched.
+    await page.click('[data-testid="tool-select"]');
+    const center = await toClient(400, 360);
+    await page.mouse.click(center.x, center.y);
+    const scale = (await getViewport(page)).scale;
+    await drag(center, { x: center.x + 100 * scale, y: center.y + 20 * scale });
+
+    scene = await getScene(page);
+    const moved = scene.objects[rectId];
+    assert.ok(Math.abs(moved.x - (rectBefore.x + 100)) <= 2, `rect moved +100, got ${round(moved.x - rectBefore.x)}`);
+    assert.ok(Math.abs(moved.y - (rectBefore.y + 20)) <= 2, `rect moved +20, got ${round(moved.y - rectBefore.y)}`);
+    const followed = scene.objects[arrowId];
+    const expectedStart = [moved.x + moved.width - arrowOrigin.x, moved.y + moved.height / 2 - arrowOrigin.y];
+    assert.ok(
+      Math.abs(followed.data.points[0] - expectedStart[0]) <= 2 &&
+        Math.abs(followed.data.points[1] - expectedStart[1]) <= 2,
+      `stored start (${round(followed.data.points[0])}, ${round(followed.data.points[1])}) does not sit on the moved edge, expected (~${round(expectedStart[0])}, ~${round(expectedStart[1])})`,
+    );
+    assert.deepEqual(
+      followed.data.points.slice(2),
+      pointsBefore.slice(2),
+      'the free end of the arrow did not move',
+    );
+
+    // 3 — one undo step restores the box and the arrow together (I9).
+    await page.click('[data-testid="undo"]');
+    scene = await getScene(page);
+    assert.ok(
+      Math.abs(scene.objects[rectId].x - rectBefore.x) <= 0.001,
+      'undo restored the rect position',
+    );
+    assert.deepEqual(scene.objects[arrowId].data.points, pointsBefore, 'undo restored the arrow points');
+
+    // 4 — after redo, a transformer resize drags the glued end to the new edge.
+    await page.click('[data-testid="redo"]');
+    await page.evaluate((id) => window.__scene.editor.setSelection([id]), rectId);
+    const resized0 = (await getScene(page)).objects[rectId];
+    const corner = await toClient(resized0.x + resized0.width, resized0.y + resized0.height);
+    await drag(corner, { x: corner.x + 120, y: corner.y + 60 });
+    scene = await getScene(page);
+    const resized = scene.objects[rectId];
+    assert.ok(
+      resized.width > resized0.width + 40,
+      `the transformer resize did not take (${round(resized0.width)} -> ${round(resized.width)})`,
+    );
+    const resizedArrow = scene.objects[arrowId];
+    const expectedResized = [
+      resized.x + resized.width - arrowOrigin.x,
+      resized.y + resized.height / 2 - arrowOrigin.y,
+    ];
+    assert.ok(
+      Math.abs(resizedArrow.data.points[0] - expectedResized[0]) <= 2 &&
+        Math.abs(resizedArrow.data.points[1] - expectedResized[1]) <= 2,
+      `the stored start did not follow the resized edge: (${round(resizedArrow.data.points[0])}, ${round(resizedArrow.data.points[1])}) vs (~${round(expectedResized[0])}, ~${round(expectedResized[1])})`,
+    );
+    const pointsAfterResize = [...resizedArrow.data.points];
+
+    // 5 — deleting the box leaves the arrow byte-identical but unbound; undo
+    //       brings the box back with the binding.
+    await page.evaluate((id) => window.__scene.editor.setSelection([id]), rectId);
+    await page.click('[data-testid="delete"]');
+    scene = await getScene(page);
+    assert.equal(scene.objects[rectId], undefined, 'the rect is gone');
+    const survivor = scene.objects[arrowId];
+    assert.ok(survivor, 'the bound arrow survives its target');
+    assert.equal(survivor.data.start, undefined, 'the binding was stripped');
+    assert.deepEqual(survivor.data.points, pointsAfterResize, 'the stored points stand byte-for-byte');
+
+    await page.click('[data-testid="undo"]');
+    scene = await getScene(page);
+    assert.ok(scene.objects[rectId], 'undo brought the rect back');
+    assert.equal(scene.objects[arrowId].data.start?.id, rectId, 'undo restored the stripped binding');
+
+    // 6 — a full JSON round-trip keeps the binding driving the arrow.
+    const json = await page.evaluate(() => window.__scene.toJSON());
+    const roundtripFile = path.join(ARTIFACTS, 'aj-roundtrip.json');
+    await writeFile(roundtripFile, json);
+    await page.setInputFiles('[data-testid="load-file"]', roundtripFile);
+    await page.waitForFunction(() => window.__scene.getScene().order.length === 2, null, { timeout: 5000 });
+    scene = await getScene(page);
+    const reloadedRect = scene.objects[rectId];
+    const reloadedArrow = scene.objects[arrowId];
+    assert.ok(reloadedRect && reloadedArrow, 'both objects survived the round-trip');
+    assert.equal(reloadedArrow.data.start?.id, rectId, 'the binding metadata survived the round-trip');
+
+    const rectCenter = await toClient(reloadedRect.x + reloadedRect.width / 2, reloadedRect.y + reloadedRect.height / 2);
+    const scale2 = (await getViewport(page)).scale;
+    await drag(rectCenter, { x: rectCenter.x + 50 * scale2, y: rectCenter.y });
+    scene = await getScene(page);
+    const afterRect = scene.objects[rectId];
+    const afterArrow = scene.objects[arrowId];
+    const expectedAfter = [
+      afterRect.x + afterRect.width - afterArrow.x,
+      afterRect.y + afterRect.height / 2 - afterArrow.y,
+    ];
+    assert.ok(
+      Math.abs(afterArrow.data.points[0] - expectedAfter[0]) <= 2 &&
+        Math.abs(afterArrow.data.points[1] - expectedAfter[1]) <= 2,
+      'after the round-trip, moving the box still drives the arrow start',
+    );
+
+    await shot(page, 'aj-binding');
+    return 'bind on create, follow on move/resize, strip on delete, restore on undo, survive reload';
+  });
+
   exitCode = results.every((entry) => entry.ok) ? 0 : 1;
 } catch (error) {
   console.error('\nFATAL:', error instanceof Error ? error.stack : error);
