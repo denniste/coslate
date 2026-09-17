@@ -78,6 +78,33 @@ export interface LineData {
   stroke: Paint;
   strokeWidth: number;
   strokeStyle: StrokeStyle;
+  /**
+   * Optional endpoint bindings: an end glued to another object. `x`/`y` are the
+   * anchor normalized 0..1 on the bound object's *untransformed* box. A missing
+   * `start`/`end` means that end is free — renderers must keep treating
+   * `points` as the authoritative geometry and derive nothing, so the wire
+   * format stays compatible without a scene version bump (same precedent as
+   * `strokeStyle`).
+   */
+  start?: EndpointBinding;
+  end?: EndpointBinding;
+}
+
+/**
+ * One bound endpoint of a line or arrow. While the binding exists, the
+ * endpoint follows the bound object's transform; the editing host keeps the
+ * stored `points` in sync, so a consumer that knows nothing about bindings
+ * still renders, exports and round-trips the connector correctly.
+ */
+export interface EndpointBinding {
+  /** The bound object. May be missing from the scene (deleted): then the last
+   *  stored points stand and the binding is inert until the target returns or
+   *  the field is stripped. */
+  id: Id;
+  /** Anchor on the bound object's untransformed box, normalized 0..1. */
+  x: number;
+  /** Anchor on the bound object's untransformed box, normalized 0..1. */
+  y: number;
 }
 
 export interface ArrowData extends LineData {

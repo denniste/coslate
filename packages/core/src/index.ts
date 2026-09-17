@@ -12,6 +12,7 @@ export { BOARD_THEMES, DEFAULT_BACKGROUND, DEFAULT_GRID, resolveGrid } from './a
 export type {
   Bounds,
   EllipseData,
+  EndpointBinding,
   Id,
   LineData,
   ObjectData,
