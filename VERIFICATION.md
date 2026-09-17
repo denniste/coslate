@@ -6,14 +6,15 @@
 > plain history, not as a resolvable reference.
 
 > **This file is a log, newest first.** The current state of the project is the
-> [0.2.4 run (text typography menus)](#1-024--text-typography-menus-2026-09-16-current) right below:
-> **183 unit tests, 35/35 end-to-end assertions, both demo pages building, all three packages
-> published to npm at 0.2.4 with SLSA provenance**. Everything after it is kept as history —
-> §2 is the 0.2.3 run (line styles, board themes, picker icons, 178/34), §3 the 0.2.2 run
-> (wheel zoom, custom pickers, R13 baselines, 164/32), §4 the 0.2.1 run
-> (bug-log O1/O2/O3, 148/29), §5 the 0.2.0 run (P1 + R11, 144/26), §6 the
-> v0.2 host-readiness run (137 tests, 24/24... recorded as 128 at the time), §7 the i18n-era run
-> (20/20) and §8 the original v0.1 record (16/16). Where any of them disagree with the newest,
+> [0.2.5 run (connector endpoint binding, R14)](#1-025--connector-endpoint-binding-r14-2026-09-17-current) right below:
+> **210 unit tests, 36/36 end-to-end assertions, both demo pages building, all three packages
+> published to npm at 0.2.5 with SLSA provenance**. Everything after it is kept as history —
+> §2 is the 0.2.4 run (text typography menus, 183/35), §3 the 0.2.3 run
+> (line styles, board themes, picker icons, 178/34), §4 the 0.2.2 run
+> (wheel zoom, custom pickers, R13 baselines, 164/32), §5 the 0.2.1 run
+> (bug-log O1/O2/O3, 148/29), §6 the 0.2.0 run (P1 + R11, 144/26), §7 the
+> v0.2 host-readiness run (137 tests, 24/24... recorded as 128 at the time), §8 the i18n-era run
+> (20/20) and §9 the original v0.1 record (16/16). Where any of them disagree with the newest,
 > the newest wins.
 
 Everything below was executed in this directory on the staging machine. Raw output for the
@@ -25,7 +26,61 @@ stage-local pnpm store at `.pnpm-store/`.
 
 ---
 
-## 1. 0.2.4 — text typography menus (2026-09-16, current)
+## 1. 0.2.5 — connector endpoint binding (R14) (2026-09-17, current)
+
+Scope: lines and arrows bind to boxes. R14 was promoted from `requirements.md` §5's explicit
+non-requirement "arrow binding to shapes" (the AGENTS.md rule: design doc first, §5 strike
+after implementation — the O1/O2 precedent) as the shared foundation for the roadmap's
+flowchart/sequence-diagram tier. The stored `points` remain the single source of truth for
+render, export, read-only projection and sync; a binding is optional metadata on `LineData`
+(`start?` / `end?`, a normalized 0..1 anchor on the bound object's untransformed box), so the
+wire format gains no version bump (the `strokeStyle` precedent) and a binding-agnostic
+consumer renders and round-trips a bound connector correctly.
+
+Implementation: `EndpointBinding` + optional fields (`core/src/types.ts`); pure helpers
+`nearestAnchor` / `snapEndpoint` / `resolveAnchorWorld` / `boundArrowOps` / `stripBindingOps`
+(`konva/src/binding.ts`, deliberately free of any Konva import); creation snap-to-bind in
+`tools/shape.ts` (8 screen px, nearest box perimeter across the scene, rect/ellipse/text
+only — never lines, arrows, ink or hidden boxes); same-transaction re-derivation at every
+geometry commit (`editor.ts` `commitTransform` / `deleteSelection` / `applyStyleToSelection` /
+`commitText`, `tools/select.ts` `commitDrag`, `tools/eraser.ts`); transient node-only
+following mid-gesture (`updateBoundArrowsTransient`, wired to the transformer's `transform`
+event and the select tool's drag). One gesture stays one undo step; deleting a bound box
+strips survivors' bindings in the same transaction and undo restores them for free (a patch
+`remove` inverts to an `add` of the prior value). Confirmed semantic: a gesture starting
+*inside* a box binds to the matching interior anchor ("the arrow from this box" follows the
+box) — codified in the unit suite.
+
+**Gate (this directory, 2026-09-17):** `pnpm typecheck` clean; `pnpm test` **210/210**
+(13 files; the new `tests/unit/binding.test.ts` contributes 27 — hand-computed anchor
+geometry, snap semantics, patch derivation for move/resize/rotation/multi-point/missing
+target, strip rules, one-transaction-one-undo, delete-undo restores the binding, serialize
+round-trip, live patch application); `pnpm e2e` **36/36** (the new check `aj` drives a real
+browser: bind-on-create from the right edge with anchor ≈ (1, 0.5), stored start re-derived
+when the box drags, one toolbar undo restoring box and arrow together, transformer resize
+dragging the glued end to the new edge, delete stripping the binding while the points stand
+byte-for-byte with undo restoring both, and a full `toJSON`/`loadJSON` round-trip after which
+moving the box still drives the arrow). `pnpm pack` self-check clean on all three packages.
+
+**Release:** all five manifests at `0.2.5`, peer ranges unchanged at `^0.2.3` (0.2.5
+satisfies them — verified against the published 0.2.4 tarballs before bumping). Pushed as
+`78ffebd..e02a584`; draft release `0.2.5` created and published via
+`gh release edit 0.2.5 --draft=false`; Publish Packages run `35182313316` **success** on the
+first attempt. Registry read replication confirmed for all three packages
+(`@coslate/core|konva|ui@0.2.5`); headless consumer smoke in a scratch project imports
+`@coslate/core@0.2.5`, round-trips a bound arrow through `serialize`/`deserialize`, and
+applies + undoes a move through the store. SLSA provenance attested on the published
+tarballs (`dist.attestations.provenance`, predicate `https://slsa.dev/provenance/v1`).
+
+Deferred, by design (recorded in `.design/requirements/r14-connector-binding.md`):
+single-endpoint re-drag to re-bind/unbind (+1–2 days, purely additive, consumes only this
+tier's helpers); mixed-version peers do not re-derive arrows until a same-version client
+moves the bound box (accepted under the host deployment model); duplicating a bound arrow
+keeps pointing at the original box (tldraw behaviour).
+
+---
+
+## 2. 0.2.4 — text typography menus (2026-09-16)
 
 Scope: font-family and font-size menus for text. Two native selects in the chrome's style
 strip (same rationale as the language menu), fed by `FONT_FAMILIES` / `FONT_SIZES` in
@@ -69,7 +124,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 2. 0.2.3 — line styles, board themes, and picker icons (2026-09-16)
+## 3. 0.2.3 — line styles, board themes, and picker icons (2026-09-16)
 
 Scope: line styles (solid / dashed / dash-dot) across model, renderer and toolbar; the
 whiteboard / blackboard switch (page background + grid through the view-config rule, chrome
@@ -114,7 +169,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 3. 0.2.2 — wheel zoom, custom pickers, and R13 baseline application (2026-09-15)
+## 4. 0.2.2 — wheel zoom, custom pickers, and R13 baseline application (2026-09-15)
 
 Scope: mouse-wheel zoom slowdown with `WheelEvent.deltaMode` normalization (T1), custom
 stroke/fill colour pickers (T2), and R13 — a whole document applies through the delta path
@@ -157,7 +212,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 4. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15)
+## 5. 0.2.1 — bug-log O1/O2/O3 and mutating-control coverage (2026-09-15)
 
 Scope: the three open issues in `.design/bug-log.md`, plus the page-level coverage the clear-button
 regression showed was missing. All manifests at `0.2.1`, peers `^0.2.1` (the fifth manifest,
@@ -191,7 +246,7 @@ Evidence, per the acceptance standard:
 
 ---
 
-## 5. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
+## 6. 0.2.0 — preconditions P1 + P2 and R11 (2026-09-15)
 
 Scope: P1 (version reflects the breaking release) and R11 (the visual contract: host-settable page
 background and grid, PNG export follows), per `.design/requirements.md` §1–§2. Status rows and the
@@ -220,7 +275,7 @@ R11 evidence, as the acceptance standard requires:
 
 ---
 
-## 6. v0.2 — host-readiness (2026-09-15)
+## 7. v0.2 — host-readiness (2026-09-15)
 
 Requirement source: CoStage's `docs/COSLATE-REPLACEMENT-REQUIREMENTS.md` (R1–R10, C1–C8, D1–D4).
 Requirement-by-requirement mapping: `.design/requirements-mapping.md` (local design docs).
@@ -285,7 +340,7 @@ editor — that is the chrome, and an audience does not download it.
 
 ---
 
-## 7. Re-verification — 2026-09-14 (i18n era, superseded)
+## 8. Re-verification — 2026-09-14 (i18n era, superseded)
 
 > Historical: this run predates v0.2 below. It recorded 97 unit tests and 20 e2e assertions; the
 > v0.2 run has 128 and 24. Kept because it is the evidence for the icon toolbar, the narrow-viewport
@@ -470,7 +525,7 @@ the text tool reads the placeholder out of the live `<textarea>` and requires `�
 the localized copy reaches the runtime rather than sitting in a constant. Screenshot:
 `.artifacts/t-zh-hant.png`.
 
-## 8. Original staging record — the v0.1 run (superseded)
+## 9. Original staging record — the v0.1 run (superseded)
 
 > The first verification run, kept as history: 72 unit tests and 16 e2e assertions against
 > the code as it stood at 0.1.0. Superseded by §1 in every respect.
