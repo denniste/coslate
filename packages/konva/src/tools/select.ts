@@ -1,5 +1,6 @@
 import Konva from 'konva';
 import { isObjectOfType, updateObjectOps, type Id, type Point } from '@coslate/core';
+import { boundArrowOps } from '../binding.js';
 import { objectsInBounds } from '../geometry.js';
 import type { PointerInfo, Tool, ToolHost } from './types.js';
 
@@ -97,6 +98,7 @@ export class SelectTool implements Tool {
         node.x(origin.x + dx);
         node.y(origin.y + dy);
       }
+      this.host.updateBoundArrowsTransient([...this.origins.keys()]);
       this.host.refreshTransformer();
       this.host.requestDraw();
       return;
@@ -166,6 +168,11 @@ export class SelectTool implements Tool {
       (_scene, tx) => {
         for (const move of moves) {
           store.dispatch(tx.commit('object.move', updateObjectOps(move.id, { x: move.x, y: move.y }), { label: 'Move' }));
+        }
+        // Bound connectors follow the moved boxes in the same transaction.
+        const follow = boundArrowOps(store.getState(), moves.map((move) => move.id));
+        if (follow.length > 0) {
+          store.dispatch(tx.commit('object.update', follow, { label: 'Move' }));
         }
       },
       { label: moves.length > 1 ? `Move ${moves.length} objects` : 'Move' },

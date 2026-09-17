@@ -1,4 +1,5 @@
 import { removeObjectOps, type Id } from '@coslate/core';
+import { stripBindingOps } from '../binding.js';
 import type { PointerInfo, Tool, ToolHost } from './types.js';
 
 /**
@@ -51,6 +52,12 @@ export class EraserTool implements Tool {
           store.dispatch(
             tx.commit('object.delete', removeObjectOps(store.getState(), id), { label: 'Erase' }),
           );
+        }
+        // Survivors lose bindings to the erased, same transaction, so undo
+        // restores the erased object and the bindings together.
+        const strip = stripBindingOps(store.getState(), ids);
+        if (strip.length > 0) {
+          store.dispatch(tx.commit('object.update', strip, { label: 'Erase' }));
         }
       },
       { label: ids.length > 1 ? `Erase ${ids.length} objects` : 'Erase' },
