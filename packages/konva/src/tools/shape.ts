@@ -7,6 +7,7 @@ import {
   type Point,
 } from '@coslate/core';
 import { normalizePoints } from '../geometry.js';
+import { BIND_THRESHOLD_PX, snapEndpoint } from '../binding.js';
 import type { PointerInfo, Tool, ToolHost, ToolName } from './types.js';
 
 /**
@@ -92,14 +93,28 @@ export class ShapeTool implements Tool {
     }
 
     if (Math.hypot(end.x - start.x, end.y - start.y) < minWorld) return;
-    const { points, bounds } = normalizePoints([start.x, start.y, end.x, end.y]);
+    // Snap-bind: a line/arrow end dropped near a bindable box glues to its
+    // perimeter (8 screen px), storing the anchor; a free end stays free.
+    const threshold = BIND_THRESHOLD_PX / viewport.scale;
+    const startSnap = snapEndpoint(this.host.getScene(), start, threshold);
+    const endSnap = snapEndpoint(this.host.getScene(), end, threshold);
+    const from = startSnap?.world ?? start;
+    const to = endSnap?.world ?? end;
+    const { points, bounds } = normalizePoints([from.x, from.y, to.x, to.y]);
     const object = makeObject({
       type: this.kind,
       x: bounds.x,
       y: bounds.y,
       width: Math.max(bounds.width, 0.5),
       height: Math.max(bounds.height, 0.5),
-      data: { points, stroke: style.stroke, strokeWidth: style.strokeWidth, strokeStyle: style.strokeStyle },
+      data: {
+        points,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        strokeStyle: style.strokeStyle,
+        ...(startSnap ? { start: startSnap.binding } : {}),
+        ...(endSnap ? { end: endSnap.binding } : {}),
+      },
     });
     this.host.store.commit({ type: 'object.create', patch: addObjectOps(object), label: LABELS[this.kind] });
   }

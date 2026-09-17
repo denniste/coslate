@@ -43,6 +43,29 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+/** The closest perimeter anchor of one object's box to a world point, if near enough. */
+function perimeterAnchor(
+  object: SceneObject,
+  world: Point,
+  thresholdPx: number,
+): { binding: EndpointBinding; world: Point; distance: number } | null {
+  const local = worldToLocal(object, world);
+  const cx = clamp(local.x, 0, object.width);
+  const cy = clamp(local.y, 0, object.height);
+  const snapped = localToWorld(object, { x: cx, y: cy });
+  const distance = Math.hypot(snapped.x - world.x, snapped.y - world.y);
+  if (distance > thresholdPx) return null;
+  return {
+    binding: {
+      id: object.id,
+      x: object.width === 0 ? 0 : cx / object.width,
+      y: object.height === 0 ? 0 : cy / object.height,
+    },
+    world: snapped,
+    distance,
+  };
+}
+
 /**
  * The world position of a bound anchor on `object`: the anchor is normalized
  * on the *untransformed* box, so scale and rotation apply on top of it.
@@ -65,16 +88,28 @@ export function nearestAnchor(
   thresholdPx: number = BIND_THRESHOLD_PX,
 ): EndpointBinding | null {
   if (!isBindable(object)) return null;
-  const local = worldToLocal(object, world);
-  const cx = clamp(local.x, 0, object.width);
-  const cy = clamp(local.y, 0, object.height);
-  const snapped = localToWorld(object, { x: cx, y: cy });
-  if (Math.hypot(snapped.x - world.x, snapped.y - world.y) > thresholdPx) return null;
-  return {
-    id: object.id,
-    x: object.width === 0 ? 0 : cx / object.width,
-    y: object.height === 0 ? 0 : cy / object.height,
-  };
+  return perimeterAnchor(object, world, thresholdPx)?.binding ?? null;
+}
+
+/**
+ * The best snap target in the whole scene for a freshly drawn connector end:
+ * the bindable object whose box perimeter lies nearest to `world` within the
+ * threshold, with the snapped world position. Ties and overlaps resolve to the
+ * nearest perimeter, not paint order.
+ */
+export function snapEndpoint(
+  scene: Scene,
+  world: Point,
+  thresholdPx: number = BIND_THRESHOLD_PX,
+): { binding: EndpointBinding; world: Point } | null {
+  let best: { binding: EndpointBinding; world: Point; distance: number } | null = null;
+  for (const id of scene.order) {
+    const object = scene.objects[id];
+    if (!object) continue;
+    const candidate = perimeterAnchor(object, world, thresholdPx);
+    if (candidate && (!best || candidate.distance < best.distance)) best = candidate;
+  }
+  return best ? { binding: best.binding, world: best.world } : null;
 }
 
 function isConnector(

@@ -26,6 +26,7 @@ export {
   boundArrowOps,
   nearestAnchor,
   resolveAnchorWorld,
+  snapEndpoint,
   stripBindingOps,
 } from './binding.js';
 
