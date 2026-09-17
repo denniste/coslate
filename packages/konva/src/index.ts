@@ -20,6 +20,15 @@ export {
 } from './geometry.js';
 export type { HitOptions } from './geometry.js';
 
+export {
+  BIND_THRESHOLD_PX,
+  BINDABLE_TYPES,
+  boundArrowOps,
+  nearestAnchor,
+  resolveAnchorWorld,
+  stripBindingOps,
+} from './binding.js';
+
 export { createObjectNode, measureText, textAttrs, updateObjectNode } from './nodes.js';
 
 export {
